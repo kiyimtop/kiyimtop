@@ -1,7 +1,7 @@
 import { authHeader, getSiteSession, isLoggedIn, logout } from './auth.js'
 import { asset } from './base.js'
 
-// Брони: запросы к серверу (/api/bookings, папка api/ на Vercel).
+// Брони: запросы к серверу (/api/bookings — functions/api на Cloudflare, логика в server/handlers.js).
 // Сервер узнаёт покупателя по подписи Telegram: в Mini App — сразу, на сайте — после
 // «Войти через Telegram» (lib/auth.js).
 
@@ -42,7 +42,8 @@ async function call(method, query = '', body) {
 
 export const fetchMyBookings = () => call('GET').then((data) => data.bookings)
 
-export const createBooking = (variantId) => call('POST', '', { variantId }).then((data) => data.booking)
+// productId — чтобы сервер сразу нашёл товар (без него ищет вариант по всему каталогу).
+export const createBooking = (variantId, productId) => call('POST', '', { variantId, productId }).then((data) => data.booking)
 
 export const cancelBooking = (id) => call('DELETE', `?id=${encodeURIComponent(id)}`)
 

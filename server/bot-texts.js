@@ -6,7 +6,12 @@ const texts = {
   uz: {
     welcome:
       'Assalomu alaykum! KiyimTop — Toshkent do‘konlaridagi kiyimlar katalogi.\n' +
-      'Ochish uchun pastdagi «Ochish» tugmasini bosing.',
+      'Kerakli kiyimni toping, qaysi do‘konda borligini ko‘ring va bron qiling.\n' +
+      'Ochish uchun «Ochish» tugmasini bosing 👇',
+    open: '🛍 Ochish',
+    bookings: 'Bronlaringizni ko‘rish uchun tugmani bosing 👇',
+    commandStart: 'KiyimTop’ni ochish',
+    commandBookings: 'Mening bronlarim',
     loginAsk: (code, site) =>
       `KiyimTop saytiga kirish\nSaytdagi kod: ${code}\n\n` +
       `«Ha, kirish»ni faqat o‘zingiz hozir ${site} saytiga kirayotgan bo‘lsangiz va saytda shu kodni ko‘rsangiz bosing.`,
@@ -19,7 +24,12 @@ const texts = {
   ru: {
     welcome:
       'Здравствуйте! KiyimTop — каталог одежды в магазинах Ташкента.\n' +
-      'Чтобы открыть, нажмите кнопку «Ochish» внизу.',
+      'Найдите нужную вещь, посмотрите, в каком магазине она есть, и забронируйте.\n' +
+      'Чтобы открыть, нажмите «Ochish» 👇',
+    open: '🛍 Ochish',
+    bookings: 'Чтобы посмотреть свои брони, нажмите кнопку 👇',
+    commandStart: 'Открыть KiyimTop',
+    commandBookings: 'Мои брони',
     loginAsk: (code, site) =>
       `Вход на сайт KiyimTop\nКод на сайте: ${code}\n\n` +
       `Нажимайте «Да, войти», только если вы сами сейчас входите на сайт ${site} и видите там этот код.`,

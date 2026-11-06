@@ -45,7 +45,7 @@ export default function BookingSheet({ open, onClose, onBooked, product, variant
     setStep('sending')
     setError(null)
     try {
-      const created = await createBooking(variant.id)
+      const created = await createBooking(variant.id, product.id)
       if (onBooked) return onBooked(created)
       setBooking(created)
       setStep('done')

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { BASE } from './base.js'
 
 // Внутри приложения адреса пишем от корня (/c/sneakers), а в строке браузера к ним добавляется BASE
-// (на GitHub Pages — /Topdim/c/sneakers). withBase добавляет, appPath убирает.
+// (на GitHub Pages — /kiyimtop/c/sneakers). withBase добавляет, appPath убирает.
 const prefix = BASE.replace(/\/$/, '')
 export const withBase = (path) => prefix + path
 export function appPath(pathname = window.location.pathname) {

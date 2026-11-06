@@ -3,7 +3,7 @@
 // и чтобы без интернета открывалась последняя загруженная версия, а не ошибка.
 
 // При изменении этого файла увеличить номер версии — старые сохранённые копии удалятся.
-const CACHE = 'kiyimtop-v2'
+const CACHE = 'kiyimtop-v3'
 
 self.addEventListener('install', () => self.skipWaiting())
 
@@ -20,7 +20,7 @@ self.addEventListener('fetch', (event) => {
   const request = event.request
   const url = new URL(request.url)
 
-  // Не трогаем: отправку данных, чужие сайты (Telegram, Supabase) и серверные функции.
+  // Не трогаем: отправку данных, чужие сайты (Telegram, Firebase) и серверные функции.
   if (request.method !== 'GET' || url.origin !== self.location.origin || url.pathname.includes('/api/')) {
     return
   }
