@@ -1,0 +1,2394 @@
+/* Фирменные цвета KiyimTop. Используем только через эти переменные. */
+:root {
+  --color-bg: #F5F1E8;
+  --color-blue: #4A5BD6;
+  --color-orange: #FF9B5E;
+  --color-green: #1F7A55;
+  --color-text: #1F2340;
+  --color-text-muted: #5E6278;
+  --color-white: #FFFFFF;
+  --color-error: #B3261E; /* текст ошибок (например, «не удалось определить, где вы») */
+
+  /* Шрифты: основной текст и крупные заголовки витрины. */
+  --font-text: 'Manrope', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-display: 'Unbounded', 'Arial Black', 'Helvetica Neue', Arial, sans-serif;
+
+  color-scheme: light;
+  font-family: var(--font-text);
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-text-size-adjust: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+}
+
+/* Страница на весь экран, с отступами под «чёлку» и полоску внизу на телефонах.
+   Что выходит за край экрана (например, большой рисунок категории), обрезается —
+   иначе страница на телефоне начинает ездить вбок. */
+.page {
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow-x: clip;
+  padding:
+    calc(16px + env(safe-area-inset-top))
+    calc(16px + env(safe-area-inset-right))
+    calc(16px + env(safe-area-inset-bottom))
+    calc(16px + env(safe-area-inset-left));
+}
+
+.page-header {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Переключатель языка (и лупа перед ним) всегда справа, даже когда слева нет кнопки «Назад». */
+.page-header .lang-switcher,
+.page-header .search-button {
+  margin-left: auto;
+}
+
+.page-header .search-button + .lang-switcher {
+  margin-left: 0;
+}
+
+/* Круглые кнопки в шапке: «⋮» на главной (список категорий) и лупа (поиск). */
+.menu-button,
+.search-button {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-white);
+  box-shadow: 0 1px 3px rgba(31, 35, 64, 0.12);
+  color: var(--color-blue);
+  cursor: pointer;
+}
+
+.menu-button .icon,
+.search-button .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.menu-button:focus-visible,
+.search-button:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+/* Кнопка «Назад» (в браузере; в Telegram — его кнопка в шапке). */
+.back-button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-white);
+  box-shadow: 0 1px 3px rgba(31, 35, 64, 0.12);
+  color: var(--color-blue);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.back-button:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+.page-main {
+  flex: 1;
+}
+
+/* «Загрузка…», «ничего не найдено» и сообщение об ошибке. */
+.page-message {
+  max-width: 420px;
+  margin: 40px auto;
+  text-align: center;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+/* Главная кнопка (синяя). Бывает и кнопкой, и ссылкой. */
+.primary-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  min-height: 44px;
+  padding: 0 24px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-blue);
+  color: var(--color-white);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.primary-button:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+.page-footer {
+  text-align: center;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+/* Переключатель языка UZ / RU. */
+.lang-switcher {
+  display: inline-flex;
+  padding: 4px;
+  border-radius: 999px;
+  background: var(--color-white);
+  box-shadow: 0 1px 3px rgba(31, 35, 64, 0.12);
+}
+
+.lang-button {
+  min-width: 52px;
+  min-height: 40px;
+  padding: 0 14px;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-blue);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.lang-button.active {
+  background: var(--color-blue);
+  color: var(--color-white);
+}
+
+.lang-button:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+/* ---------- Страницы категории и товара: фон в цвете категории (как на витрине) ---------- */
+/* Цвет задаёт lib/pageColor.js (переменные --page-…). */
+html.page-colored {
+  background: var(--page-bg);
+  transition: background-color 0.5s ease;
+}
+
+html.page-colored body {
+  background: transparent;
+}
+
+/* «Загрузка…», ошибка и подпись внизу — в цвет текста страницы, чтобы читались на любом фоне. */
+html.page-colored .page-message,
+html.page-colored .page-footer {
+  color: var(--page-ink-soft);
+}
+
+.icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+
+/* --- Категория --- */
+.cat {
+  max-width: 880px;
+  margin: 8px auto 32px;
+}
+
+.cat-hero {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 170px;
+  margin-bottom: 6px;
+  color: var(--page-ink);
+}
+
+.cat-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(30px, 9vw, 52px);
+  line-height: 1.02;
+  letter-spacing: -0.02em;
+}
+
+.cat-summary {
+  margin: 10px 0 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--page-ink-soft);
+}
+
+.cat-hero-art {
+  width: clamp(130px, 38vw, 260px);
+  filter: drop-shadow(0 14px 18px rgba(0, 0, 0, 0.18));
+  animation: sc-float 4.6s ease-in-out infinite;
+}
+
+.cat-hero-art svg,
+.cat-hero-art img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.cat-hero-art img {
+  max-height: 220px;
+  object-fit: contain;
+}
+
+/* Кнопки-«таблетки»: размеры, цвета (как на витрине). */
+.chip-row {
+  display: flex;
+  gap: 8px;
+  margin: 6px -16px 18px;
+  padding: 2px 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.chip-row::-webkit-scrollbar {
+  display: none;
+}
+
+/* На компьютере места хватает — кнопки переносятся на новую строку, а не прячутся за краем. */
+@media (min-width: 760px) {
+  .chip-row {
+    flex-wrap: wrap;
+    margin-left: 0;
+    margin-right: 0;
+    padding: 2px 0;
+    overflow: visible;
+  }
+}
+
+.chip-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 46px;
+  height: 42px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.6);
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.15s ease;
+}
+
+.chip:active {
+  transform: scale(0.95);
+}
+
+.chip[aria-pressed='true'] {
+  background: var(--color-text);
+  color: var(--color-white);
+}
+
+/* Нет в наличии — зачёркнуто и не нажимается. */
+.chip:disabled {
+  opacity: 0.45;
+  text-decoration: line-through;
+  cursor: not-allowed;
+}
+
+.chip:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+/* «Фильтры» и «Сортировка» над списком магазинов. */
+.cat-tools {
+  display: flex;
+  gap: 8px;
+  margin: 4px 0 10px;
+}
+
+.tool-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 44px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 14px;
+  background: var(--color-white);
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.08);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 800;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.tool-button:active {
+  transform: scale(0.96);
+}
+
+.tool-button:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+/* Сколько фильтров выбрано. На оранжевом — тёмный текст. */
+.tool-badge {
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: var(--color-orange);
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* --- Магазины --- */
+.shop-list {
+  display: grid;
+  gap: 14px;
+}
+
+@media (min-width: 760px) {
+  .shop-list {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
+.shop {
+  padding: 18px;
+  border-radius: 24px;
+  background: var(--color-white);
+  box-shadow: 0 8px 24px rgba(31, 35, 64, 0.08);
+}
+
+.shop-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.shop-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 17px;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+/* Название магазина — ссылка на его страницу. */
+.shop-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.shop-link h2 {
+  margin: 0;
+  font: inherit;
+}
+
+.shop-link .icon {
+  width: 16px;
+  height: 16px;
+  color: var(--color-text-muted);
+}
+
+.shop-link:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.badge-cheapest {
+  flex: none;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--color-green);
+  color: var(--color-white);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.shop-place,
+.open-status {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0 0 6px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+}
+
+.shop-distance {
+  color: var(--color-text);
+  font-weight: 800;
+}
+
+.open-status.open {
+  color: var(--color-green);
+  font-weight: 700;
+}
+
+.shop-place .icon,
+.open-status .icon {
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+}
+
+/* --- Товары магазина: плитка с вещью в цвете товара + название, цена, цвета --- */
+.product-list {
+  display: grid;
+  gap: 6px;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.product-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 0 -8px;
+  padding: 8px;
+  border-radius: 18px;
+  color: inherit;
+  text-decoration: none;
+  transition: background-color 0.2s ease, transform 0.15s ease;
+}
+
+.product-row:active {
+  transform: scale(0.98);
+}
+
+.product-row:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+.product-row.out {
+  opacity: 0.55;
+}
+
+@media (hover: hover) {
+  .product-row:hover {
+    background: var(--color-bg);
+  }
+}
+
+.product-tile {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 96px;
+  height: 96px;
+  overflow: hidden;
+  border-radius: 18px;
+}
+
+.product-tile > div {
+  width: 78%;
+}
+
+.product-tile svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.15));
+}
+
+.product-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.product-tile .sc-emoji {
+  font-size: 44px;
+}
+
+.product-info {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.product-brand {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.product-name {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.product-price {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.product-stock {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.color-dots {
+  display: flex;
+  gap: 6px;
+}
+
+.color-dot {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px rgba(0, 0, 0, 0.12);
+}
+
+.product-chevron {
+  color: var(--color-text-muted);
+}
+
+/* --- Товар: вещь на цветной сцене, ниже белая карточка --- */
+.product-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+/* ---------- Поиск ---------- */
+.search {
+  max-width: 880px;
+  margin: 8px auto 32px;
+}
+
+.search-title,
+.shop-page-title {
+  margin: 4px 0 14px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(28px, 8vw, 44px);
+  line-height: 1.05;
+  letter-spacing: -0.02em;
+}
+
+.search-box {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 56px;
+  padding: 0 8px 0 16px;
+  border-radius: 18px;
+  background: var(--color-white);
+  box-shadow: 0 8px 24px rgba(31, 35, 64, 0.08);
+  color: var(--color-text-muted);
+}
+
+.search-box:focus-within {
+  box-shadow: 0 0 0 3px var(--color-blue), 0 8px 24px rgba(31, 35, 64, 0.08);
+}
+
+.search-box > .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.search-box input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-size: 17px; /* не меньше 16px — иначе iPhone увеличивает страницу при вводе */
+  font-weight: 600;
+  outline: none;
+}
+
+/* Свой крестик «очистить» вместо встроенного в браузер. */
+.search-box input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search-clear {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: var(--color-bg);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.search-clear:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+.search-hint {
+  margin: 16px 2px;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.search .chip,
+.shop-page .chip {
+  background: var(--color-white);
+  text-decoration: none;
+}
+
+.search .chip[aria-pressed='true'],
+.shop-page .chip[aria-pressed='true'] {
+  background: var(--color-text);
+  color: var(--color-white);
+}
+
+.search-group {
+  margin-top: 26px;
+}
+
+.search-group-title,
+.shop-section-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 12px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 20px;
+  letter-spacing: -0.01em;
+}
+
+.shop-section-title a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.search-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--color-white);
+  color: var(--color-text-muted);
+  font-family: var(--font-text);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.search-shops {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.search-shop {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: 22px;
+  background: var(--color-white);
+  box-shadow: 0 8px 24px rgba(31, 35, 64, 0.08);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.search-shop:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+.search-shop-text {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  gap: 4px;
+}
+
+.search-shop-place {
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--color-text-muted);
+}
+
+.search-shop .open-status {
+  margin: 2px 0 0;
+}
+
+/* ---------- Страница магазина ---------- */
+.shop-page {
+  max-width: 880px;
+  margin: 8px auto 32px;
+}
+
+.shop-page-title {
+  margin-bottom: 8px;
+}
+
+.shop-page-description {
+  margin: 0 0 16px;
+  font-size: 16px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.shop-page-info {
+  margin-bottom: 18px;
+}
+
+.shop-page-info .secondary-button {
+  background: var(--color-bg);
+  box-shadow: none;
+}
+
+.shop-section {
+  margin-top: 22px;
+}
+
+.pp {
+  max-width: 980px;
+  margin: 0 auto 24px;
+}
+
+.pp-stage {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: clamp(240px, 42vh, 420px);
+}
+
+.pp-art {
+  width: min(72vw, 360px);
+  filter: drop-shadow(0 18px 22px rgba(0, 0, 0, 0.22));
+  animation: sc-float 4.6s ease-in-out infinite;
+}
+
+.pp-art svg,
+.pp-art img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.pp-art img {
+  max-height: 38vh;
+  object-fit: contain;
+}
+
+.pp-art .sc-emoji {
+  font-size: 140px;
+}
+
+.pp-shadow {
+  position: absolute;
+  bottom: 6%;
+  left: 50%;
+  width: 46%;
+  height: 22px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.25), rgba(0, 0, 0, 0));
+  animation: sc-shadow 4.6s ease-in-out infinite;
+}
+
+.pp-card {
+  position: relative;
+  margin: 0 -16px;
+  padding: 22px 20px 8px;
+  border-radius: 28px 28px 0 0;
+  background: var(--color-white);
+  box-shadow: 0 -8px 30px rgba(31, 35, 64, 0.08);
+}
+
+.pp-category {
+  display: inline-flex;
+  gap: 6px;
+  color: var(--color-blue);
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.pp-title {
+  margin: 6px 0 4px;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(24px, 6.5vw, 34px);
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+}
+
+.pp-meta {
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: var(--color-text-muted);
+}
+
+.pp-price {
+  margin: 0 0 18px;
+  font-size: 28px;
+  font-weight: 800;
+}
+
+.pp-option {
+  margin-bottom: 16px;
+}
+
+.pp-option-label {
+  margin: 0 0 10px;
+  font-size: 15px;
+  color: var(--color-text-muted);
+}
+
+.pp-option-label b {
+  color: var(--color-text);
+}
+
+.pp-card .chip {
+  background: var(--color-bg);
+}
+
+.pp-card .chip[aria-pressed='true'] {
+  background: var(--color-text);
+  color: var(--color-white);
+}
+
+.color-chip .color-dot {
+  width: 18px;
+  height: 18px;
+}
+
+.stock-line {
+  margin: 4px 0 6px;
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--color-text-muted);
+}
+
+.stock-line.in-stock {
+  color: var(--color-green);
+}
+
+/* На телефоне «Забронировать» прилипает к низу экрана. */
+.pp-book {
+  position: sticky;
+  bottom: 0;
+  z-index: 3;
+  margin: 0 -20px;
+  padding: 12px 20px calc(12px + env(safe-area-inset-bottom));
+  background: linear-gradient(rgba(255, 255, 255, 0), var(--color-white) 35%);
+}
+
+/* «Забронировать» — оранжевая, текст тёмный. */
+.book-button {
+  width: 100%;
+  min-height: 56px;
+  border: none;
+  border-radius: 999px;
+  background: var(--color-orange);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 18px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 8px 20px rgba(255, 155, 94, 0.35);
+}
+
+.book-button:disabled {
+  opacity: 0.5;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.book-button:focus-visible {
+  outline: 3px solid var(--color-blue);
+  outline-offset: 2px;
+}
+
+.pp-description {
+  margin: 14px 0 18px;
+  font-size: 16px;
+  line-height: 1.55;
+}
+
+.pp-shop {
+  margin: 6px 0 16px;
+  padding: 18px;
+  border-radius: 22px;
+  background: var(--color-bg);
+}
+
+.pp-shop-label {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.pp-shop .shop-title {
+  margin-bottom: 8px;
+}
+
+.shop-all-link {
+  display: inline-block;
+  margin-top: 14px;
+  color: var(--color-blue);
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.shop-all-link:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+.shop-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+/* Второстепенная кнопка: белая с синим текстом (стоит на бежевой карточке магазина). */
+.secondary-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  background: var(--color-white);
+  box-shadow: 0 1px 3px rgba(31, 35, 64, 0.1);
+  color: var(--color-blue);
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.secondary-button:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+/* Компьютер: вещь слева (не уезжает при прокрутке), карточка справа. */
+@media (min-width: 860px) {
+  .pp {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    align-items: start;
+    gap: 24px;
+    margin-top: 8px;
+  }
+
+  .pp-stage {
+    position: sticky;
+    top: 16px;
+    height: 70vh;
+  }
+
+  .pp-art {
+    width: min(40vw, 440px);
+  }
+
+  .pp-card {
+    margin: 0;
+    padding: 28px;
+    border-radius: 28px;
+  }
+
+  .pp-book {
+    position: static;
+    margin: 0;
+    padding: 4px 0 8px;
+    background: none;
+  }
+}
+
+/* ---------- Витрина на главной (образец: design/kiyimtop-showcase.html) ---------- */
+/* Фон и цвета текста меняются под категорию: их задаёт Showcase.jsx (переменные --showcase-…). */
+html.showcase-active {
+  background: var(--showcase-bg);
+  transition: background-color 0.7s ease;
+}
+
+html.showcase-active body {
+  background: transparent;
+}
+
+html.showcase-instant {
+  transition: none;
+}
+
+/* Главная занимает ровно экран, без прокрутки. */
+.page-home {
+  height: 100vh;
+  height: 100dvh;
+  padding: 0;
+  overflow: hidden;
+  color: var(--showcase-ink);
+}
+
+.page-home .page-header {
+  padding: calc(12px + env(safe-area-inset-top)) 20px 4px;
+}
+
+.page-home .page-main {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.header-logo {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 19px;
+  letter-spacing: -0.02em;
+}
+
+.showcase {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  color: var(--showcase-ink);
+}
+
+/* Цвет следующей категории — проявляется во время свайпа. */
+.sc-tint {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.sc-main {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.sc-stage {
+  position: relative;
+  flex: 1;
+  min-height: 230px;
+  overflow: hidden;
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  cursor: grab;
+  container-type: size;
+  perspective: 900px;
+}
+
+.sc-stage.dragging {
+  cursor: grabbing;
+}
+
+/* Огромное название сзади. Размер подбирает Showcase.jsx, чтобы помещалось целиком. */
+.sc-word-wrap {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.sc-word {
+  position: absolute;
+  left: 4%;
+  top: 50%;
+  transform: translateY(-50%);
+  font-family: var(--font-display);
+  font-weight: 900;
+  line-height: 0.88;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+  white-space: pre;
+  color: var(--showcase-word);
+  transition: color 0.5s ease;
+}
+
+.sc-items {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.sc-item {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  will-change: transform;
+}
+
+.sc-tilt {
+  position: relative;
+  transition: transform 0.35s ease-out;
+  transform-style: preserve-3d;
+}
+
+/* Вещь медленно «парит». */
+.sc-float {
+  animation: sc-float 4.6s ease-in-out infinite;
+}
+
+@keyframes sc-float {
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
+.sc-pose {
+  width: calc(min(70vw, 420px) * var(--w, 1));
+  width: calc(min(84cqw, 74cqh, 620px) * var(--w, 1));
+  transform: rotate(var(--pose, 0deg));
+}
+
+.sc-pose svg,
+.sc-pose img {
+  display: block;
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 16px 20px rgba(0, 0, 0, 0.2));
+  -webkit-user-drag: none;
+}
+
+.sc-pose img {
+  max-height: 70cqh;
+  object-fit: contain;
+}
+
+.sc-emoji {
+  display: block;
+  text-align: center;
+  font-size: min(40cqh, 50cqw);
+  line-height: 1;
+}
+
+.sc-shadow {
+  position: absolute;
+  left: 50%;
+  bottom: -9%;
+  width: 72%;
+  height: 24px;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0));
+  animation: sc-shadow 4.6s ease-in-out infinite;
+}
+
+@keyframes sc-shadow {
+  50% {
+    transform: translateX(-50%) scale(0.84);
+    opacity: 0.65;
+  }
+}
+
+/* Стрелки — только на компьютере (где есть мышь). */
+.sc-arrow {
+  position: absolute;
+  top: 50%;
+  z-index: 3;
+  display: none;
+  place-items: center;
+  width: 50px;
+  height: 50px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--showcase-chip);
+  color: var(--showcase-ink);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: transform 0.2s ease;
+}
+
+.sc-arrow:hover {
+  transform: translateY(-50%) scale(1.08);
+}
+
+.sc-arrow svg {
+  width: 22px;
+  height: 22px;
+}
+
+.sc-prev {
+  left: 16px;
+}
+
+.sc-next {
+  right: 16px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .sc-arrow {
+    display: grid;
+  }
+}
+
+.sc-hint {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  z-index: 3;
+  transform: translateX(-50%);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--showcase-ink-soft);
+  pointer-events: none;
+  transition: opacity 0.5s ease;
+}
+
+.sc-hint.hidden {
+  opacity: 0;
+}
+
+.sc-info {
+  position: relative;
+  z-index: 2;
+  display: grid;
+  gap: 12px;
+  padding: 6px 20px 8px;
+}
+
+.sc-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: clamp(21px, 5.6vw, 34px);
+  line-height: 1.08;
+  letter-spacing: -0.015em;
+}
+
+.sc-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 14px;
+}
+
+.sc-price {
+  font-weight: 800;
+  font-size: 18px;
+}
+
+.sc-avail {
+  font-size: 14px;
+  color: var(--showcase-ink-soft);
+}
+
+/* Размеры — в одну строку, листаются пальцем. */
+.sc-sizes {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 -20px;
+  padding: 2px 20px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sc-sizes::-webkit-scrollbar {
+  display: none;
+}
+
+.sc-chip {
+  flex: none;
+  min-width: 46px;
+  height: 40px;
+  padding: 0 13px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--showcase-chip);
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.15s ease;
+}
+
+.sc-chip:active {
+  transform: scale(0.94);
+}
+
+.sc-chip[aria-pressed='true'] {
+  background: var(--showcase-chip-on);
+  color: var(--showcase-chip-on-ink);
+}
+
+.sc-buy {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.sc-swatches {
+  display: flex;
+  flex: none;
+  gap: 10px;
+}
+
+.sc-swatch {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55);
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.sc-swatch[aria-pressed='true'] {
+  outline: 2.5px solid var(--showcase-ink);
+  outline-offset: 3px;
+}
+
+.sc-swatch:active {
+  transform: scale(0.9);
+}
+
+.sc-cta {
+  flex: 1;
+  min-width: 0;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--showcase-chip-on);
+  color: var(--showcase-chip-on-ink);
+  font: inherit;
+  font-weight: 800;
+  font-size: 16px;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.sc-cta:active {
+  transform: scale(0.97);
+}
+
+.sc-cta svg {
+  width: 20px;
+  height: 20px;
+}
+
+/* Категории внизу — листаются пальцем, активная выделена. */
+.sc-cats {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  gap: 4px;
+  padding: 8px 14px calc(12px + env(safe-area-inset-bottom));
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.sc-cats::-webkit-scrollbar {
+  display: none;
+}
+
+.sc-cat {
+  flex: none;
+  height: 38px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 11px;
+  background: none;
+  color: var(--showcase-ink-soft);
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+.sc-cat[aria-current='true'] {
+  background: var(--showcase-chip);
+  color: var(--showcase-ink);
+}
+
+.showcase :focus-visible {
+  outline: 3px solid var(--showcase-ink);
+  outline-offset: 2px;
+}
+
+/* Компьютер: вещь слева, описание справа. */
+@media (min-width: 900px) {
+  .sc-main {
+    display: grid;
+    grid-template-columns: 1.35fr 1fr;
+    align-items: stretch;
+  }
+
+  .sc-info {
+    align-self: center;
+    max-width: 500px;
+    gap: 18px;
+    padding: 0 56px 0 8px;
+  }
+
+  .sc-sizes {
+    margin: 0;
+    padding: 2px 0;
+  }
+
+  /* По центру, но если не помещаются — листаются с самого начала (без обрезки слева). */
+  .sc-cats > :first-child {
+    margin-left: auto;
+  }
+
+  .sc-cats > :last-child {
+    margin-right: auto;
+  }
+}
+
+/* Совсем низкий экран — разрешаем прокрутку. */
+@media (max-height: 640px) {
+  .page-home {
+    height: auto;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .sc-main {
+    flex: none;
+  }
+
+  .sc-stage {
+    flex: none;
+    height: 300px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.showcase-active {
+    transition: none;
+  }
+
+  .sc-float,
+  .sc-shadow {
+    animation: none;
+  }
+}
+
+/* ---------- Шторка снизу: список категорий, фильтры, сортировка (components/Sheet.jsx) ---------- */
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(0, 0, 0, 0.42);
+  opacity: 0;
+  pointer-events: none;
+  touch-action: none;
+  transition: opacity 0.3s ease;
+}
+
+.sheet-backdrop.on {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 41;
+  max-width: 640px;
+  display: flex;
+  flex-direction: column;
+  max-height: 86vh;
+  max-height: 86dvh;
+  margin: 0 auto;
+  padding-top: 10px;
+  overflow: hidden;
+  border-radius: 28px 28px 0 0;
+  background: var(--color-white);
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.18);
+  color: var(--color-text);
+  font-family: var(--font-text);
+  transform: translateY(105%);
+  transition: transform 0.45s cubic-bezier(0.2, 0.9, 0.2, 1);
+}
+
+.sheet.on {
+  transform: none;
+}
+
+.sheet:focus {
+  outline: none;
+}
+
+.sheet-grab {
+  width: 42px;
+  height: 5px;
+  margin: 0 auto 12px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.sheet-head {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 18px 14px;
+}
+
+/* Содержимое листается, заголовок и кнопки внизу остаются на месте. */
+.sheet-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0 18px calc(18px + env(safe-area-inset-bottom));
+}
+
+.sheet-body:not(:last-child) {
+  padding-bottom: 8px;
+}
+
+.sheet-foot {
+  flex: none;
+  display: flex;
+  gap: 10px;
+  padding: 12px 18px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid rgba(31, 35, 64, 0.08);
+}
+
+.sheet-reset,
+.sheet-apply {
+  height: 54px;
+  border: 0;
+  border-radius: 18px;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.2s ease;
+}
+
+.sheet-reset {
+  flex: none;
+  padding: 0 18px;
+  background: var(--color-bg);
+  color: var(--color-text);
+}
+
+.sheet-reset:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.sheet-apply {
+  flex: 1;
+  min-width: 0;
+  padding: 0 14px;
+  background: var(--color-text);
+  color: var(--color-white);
+}
+
+/* Кнопки внизу шторки бывают и ссылками («Мои брони», «Открыть в Telegram»). */
+a.sheet-reset,
+a.sheet-apply {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.sheet-apply:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.sheet-reset:active:not(:disabled),
+.sheet-apply:active {
+  transform: scale(0.97);
+}
+
+.sheet-reset:focus-visible,
+.sheet-apply:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+/* В белой шторке кнопки-«таблетки» — бежевые. */
+.sheet .chip {
+  background: var(--color-bg);
+}
+
+.sheet .chip[aria-pressed='true'] {
+  background: var(--color-text);
+  color: var(--color-white);
+}
+
+/* --- Фильтры --- */
+.filter-group {
+  margin: 0 0 20px;
+}
+
+.filter-label {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.price-fields {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.price-field {
+  flex: 1;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+
+.price-field-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.price-field input {
+  width: 100%;
+  min-width: 0;
+  height: 48px;
+  padding: 0 14px;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 16px; /* меньше 16px — iPhone увеличивает страницу при вводе */
+  font-weight: 700;
+  outline: none;
+}
+
+.price-field input:focus {
+  border-color: var(--color-text);
+}
+
+.price-dash {
+  padding-bottom: 12px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+/* «Открыто сейчас» — переключатель на всю ширину. */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  min-height: 56px;
+  margin: 0;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.switch-row:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+.switch-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.switch {
+  position: relative;
+  flex: none;
+  width: 48px;
+  height: 28px;
+  border-radius: 999px;
+  background: rgba(31, 35, 64, 0.2);
+  transition: background-color 0.2s ease;
+}
+
+.switch::after {
+  content: '';
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--color-white);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+  transition: transform 0.2s ease;
+}
+
+.switch-row[aria-checked='true'] .switch {
+  background: var(--color-green);
+}
+
+.switch-row[aria-checked='true'] .switch::after {
+  transform: translateX(20px);
+}
+
+/* --- Сортировка --- */
+.sort-list {
+  display: grid;
+  gap: 8px;
+}
+
+.sort-option {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 58px;
+  padding: 10px 16px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+
+.sort-option[aria-checked='true'] {
+  background: var(--color-text);
+  color: var(--color-white);
+}
+
+.sort-option:disabled {
+  cursor: progress;
+}
+
+.sort-option:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+.sort-text {
+  display: grid;
+  gap: 2px;
+}
+
+.sort-hint {
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.sort-error {
+  margin: 12px 2px 0;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--color-error);
+}
+
+.sheet-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+}
+
+.sheet-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--color-bg);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.sheet-close:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+/* «Мои брони» в меню «⋮». */
+.menu-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 56px;
+  margin-bottom: 20px;
+  padding: 0 16px;
+  border-radius: 18px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-size: 16px;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.menu-link .icon {
+  width: 22px;
+  height: 22px;
+  color: var(--color-blue);
+}
+
+.menu-link .menu-link-chevron {
+  width: 18px;
+  height: 18px;
+  margin-left: auto;
+  color: var(--color-text-muted);
+}
+
+.menu-link:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+/* ---------- Бронь: шторка на странице товара ---------- */
+.booking-summary {
+  display: grid;
+  gap: 4px;
+  padding: 16px;
+  border-radius: 18px;
+  background: var(--color-bg);
+}
+
+.booking-product {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 18px;
+  line-height: 1.25;
+}
+
+.booking-details,
+.booking-shop {
+  margin: 0;
+  font-size: 15px;
+  color: var(--color-text-muted);
+}
+
+.booking-shop {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.booking-price {
+  margin: 4px 0;
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.booking-text {
+  margin: 14px 2px 0;
+  font-size: 15px;
+  line-height: 1.5;
+  color: var(--color-text-muted);
+}
+
+.booking-error {
+  margin-top: 12px;
+  font-size: 15px;
+  line-height: 1.45;
+  color: var(--color-error);
+}
+
+.booking-error p {
+  margin: 0;
+}
+
+.booking-error .shop-all-link {
+  margin-top: 8px;
+}
+
+.booking-done {
+  display: grid;
+  justify-items: center;
+  padding: 6px 0 8px;
+  text-align: center;
+}
+
+/* На зелёном — белый значок. */
+.booking-done-icon {
+  display: grid;
+  place-items: center;
+  width: 64px;
+  height: 64px;
+  margin-bottom: 10px;
+  border-radius: 50%;
+  background: var(--color-green);
+  color: var(--color-white);
+}
+
+.booking-done-icon .icon {
+  width: 32px;
+  height: 32px;
+  stroke-width: 2.5;
+}
+
+.booking-code-label {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.booking-code {
+  margin: 4px 0 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 40px;
+  letter-spacing: 0.12em;
+}
+
+/* ---------- «Войти через Telegram» на сайте ---------- */
+.tg-login {
+  display: grid;
+  justify-items: stretch;
+  gap: 12px;
+}
+
+.tg-login .booking-text {
+  margin: 0 2px;
+}
+
+.tg-login-code {
+  margin: 0 2px;
+  font-size: 15px;
+  color: var(--color-text-muted);
+}
+
+.tg-login-code b {
+  margin-left: 4px;
+  color: var(--color-text);
+  font-family: var(--font-display);
+  font-size: 20px;
+  letter-spacing: 0.12em;
+}
+
+.tg-login-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  height: 54px;
+  text-decoration: none;
+  border: 0;
+  border-radius: 18px;
+  background: var(--color-blue);
+  color: var(--color-white);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: transform 0.15s ease, opacity 0.2s ease;
+}
+
+.tg-login-button:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+.tg-login-button:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.tg-login-button:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+.tg-login-button .icon {
+  width: 22px;
+  height: 22px;
+}
+
+.tg-login .booking-error {
+  margin: 0;
+}
+
+.tg-login-app {
+  justify-self: center;
+  margin-top: 0;
+}
+
+.bookings-login {
+  max-width: 460px;
+  margin: 8px 0 0;
+  padding: 18px;
+  border-radius: 24px;
+  background: var(--color-white);
+  box-shadow: 0 8px 24px rgba(31, 35, 64, 0.08);
+}
+
+.bookings-user {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  margin: -4px 2px 16px;
+  font-size: 15px;
+  color: var(--color-text-muted);
+}
+
+/* Кнопка, которая выглядит как ссылка («Выйти»). */
+.link-button {
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: var(--color-blue);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.link-button:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/* ---------- Мои брони ---------- */
+.bookings {
+  max-width: 880px;
+  margin: 8px auto 32px;
+}
+
+.booking-list {
+  display: grid;
+  gap: 14px;
+}
+
+@media (min-width: 760px) {
+  .booking-list {
+    grid-template-columns: 1fr 1fr;
+    align-items: start;
+  }
+}
+
+.booking {
+  padding: 18px;
+  border-radius: 24px;
+  background: var(--color-white);
+  box-shadow: 0 8px 24px rgba(31, 35, 64, 0.08);
+}
+
+.booking.inactive {
+  opacity: 0.72;
+}
+
+/* Только что забронированная (пришли из брони, начатой на сайте). */
+.booking.just-booked {
+  box-shadow: 0 0 0 3px var(--color-green), 0 8px 24px rgba(31, 35, 64, 0.08);
+}
+
+/* На зелёном — белый текст. */
+.booking-new {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: -4px -4px 14px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--color-green);
+  color: var(--color-white);
+  font-size: 15px;
+  line-height: 1.45;
+}
+
+.booking-new .icon {
+  margin-top: 2px;
+  stroke-width: 2.5;
+}
+
+.booking-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.booking-status {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: var(--color-bg);
+  color: var(--color-text-muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+/* Новая — оранжевая (тёмный текст), подтверждённая — зелёная (белый текст). */
+.booking-status.new {
+  background: var(--color-orange);
+  color: var(--color-text);
+}
+
+.booking-status.confirmed {
+  background: var(--color-green);
+  color: var(--color-white);
+}
+
+.booking-code-small {
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+.booking-code-small b {
+  color: var(--color-text);
+  letter-spacing: 0.08em;
+}
+
+.booking .product-row {
+  margin: 0 -10px;
+}
+
+.booking-when {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 10px 0 12px;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.booking-shop-info {
+  padding: 14px;
+  border-radius: 18px;
+  background: var(--color-bg);
+}
+
+.booking-shop-info .shop-title {
+  margin-bottom: 6px;
+}
+
+.booking-shop-info .secondary-button {
+  background: var(--color-white);
+}
+
+.booking-cancel {
+  min-height: 44px;
+  margin-top: 12px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.booking-cancel.danger {
+  background: var(--color-error);
+  color: var(--color-white);
+}
+
+.booking-cancel:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.booking-cancel:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+.booking-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 8px;
+  margin-top: 4px;
+}
+
+.booking-confirm p {
+  flex-basis: 100%;
+  margin: 12px 0 0;
+  font-weight: 700;
+}
+
+/* Плитки категорий: 2 в ряд на телефоне, 3 — на компьютере. */
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+@media (min-width: 600px) {
+  .menu-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.menu-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: 100%;
+  min-height: 140px;
+  padding: 14px 10px 12px;
+  border-radius: 20px;
+  text-align: center;
+  text-decoration: none;
+  transition: transform 0.15s ease;
+}
+
+.menu-tile:active {
+  transform: scale(0.97);
+}
+
+.menu-tile:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+.menu-tile-art {
+  display: grid;
+  place-items: center;
+  width: 78%;
+  height: 84px;
+}
+
+.menu-tile-art svg,
+.menu-tile-art img {
+  display: block;
+  max-width: 100%;
+  max-height: 84px;
+  width: auto;
+  height: auto;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.15));
+}
+
+.menu-tile-art .sc-emoji {
+  font-size: 48px;
+}
+
+.menu-tile-name {
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet {
+    transition-duration: 0.01s;
+  }
+}
+
