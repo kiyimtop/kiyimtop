@@ -2392,3 +2392,25 @@ a.sheet-apply {
   }
 }
 
+
+/* Страница /seed — загрузка тестовых магазинов в новую базу */
+.seed {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 8px 16px 32px;
+}
+.seed-title {
+  font-family: var(--font-display);
+  color: var(--color-blue);
+  font-size: 24px;
+}
+.seed-text {
+  color: var(--color-text-muted);
+  line-height: 1.5;
+}
+.seed-ok {
+  color: var(--color-green);
+}
+.seed-error {
+  color: var(--color-error);
+}

@@ -12,6 +12,7 @@ import Home from './pages/Home.jsx'
 import MyBookings from './pages/MyBookings.jsx'
 import Product from './pages/Product.jsx'
 import Search from './pages/Search.jsx'
+import Seed from './pages/Seed.jsx'
 import Shop from './pages/Shop.jsx'
 
 export default function App() {
@@ -65,6 +66,7 @@ export default function App() {
         {route.name === 'shop' && <Shop key={route.id} id={route.id} />}
         {route.name === 'search' && <Search />}
         {route.name === 'bookings' && <MyBookings />}
+        {route.name === 'seed' && <Seed />}
         {route.name === 'home' && <Home />}
       </main>
 

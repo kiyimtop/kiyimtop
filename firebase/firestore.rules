@@ -1,0 +1,18 @@
+// Правила доступа к базе Firebase (Firestore) для KiyimTop.
+// Куда вставить: Firebase → Firestore Database → вкладка Rules → заменить всё этим текстом → Publish.
+// Посетители сайта только читают каталог: категории, активные магазины и активные товары.
+// Всё остальное (брони, запросы на вход) — только сервер (у него свой ключ, правила его не ограничивают).
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /categories/{id} {
+      allow read: if true;
+    }
+    match /shops/{id} {
+      allow read: if resource.data.is_active == true;
+    }
+    match /products/{id} {
+      allow read: if resource.data.is_active == true;
+    }
+  }
+}

@@ -7,7 +7,7 @@ import { openStatus } from './hours.js'
 export const SORTS = ['cheap', 'expensive', 'near']
 export const GENDERS = ['men', 'women', 'kids']
 
-// 12 районов Ташкента — как в базе (supabase/migrations/…_shop_district.sql).
+// 12 районов Ташкента — поле district у магазина в базе.
 // Названия на узбекском и русском — в переводах: district.<имя>.
 export const DISTRICTS = [
   'bektemir', 'chilonzor', 'mirobod', 'mirzo-ulugbek', 'olmazor', 'sergeli',

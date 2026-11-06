@@ -149,5 +149,13 @@
   "auth.code": "Tekshirish kodi (botda ham shu kod bo‘ladi):",
   "auth.openAgain": "Botni yana ochish",
   "auth.expired": "Kirish tasdiqlanmadi: havola 10 daqiqa amal qiladi yoki kirish botda bekor qilingan. Qayta urinib ko‘ring.",
-  "auth.again": "Qaytadan kirish"
+  "auth.again": "Qaytadan kirish",
+  "seed.title": "Sinov do‘konlari",
+  "seed.text": "Firebase bazasiga 11 ta toifa va 8 ta sinov do‘konini mahsulotlari bilan yuklash. Baza yaratilgandan keyin bir marta kerak (u sinov rejimida turganda).",
+  "seed.button": "Yuklash",
+  "seed.working": "Yuklanmoqda…",
+  "seed.done": "Tayyor: toifalar — {c}, do‘konlar — {s}, mahsulotlar — {p}. Endi Firebase’ga kirish qoidalarini qo‘ying.",
+  "seed.denied": "Firebase yozishga ruxsat bermadi: kirish qoidalari bazani allaqachon yopgan (yuklashdan keyin shunday bo‘lishi kerak). Ma’lumotlar hali yuklanmagan bo‘lsa — vaqtincha sinov rejimini yoqing.",
+  "seed.error": "Bo‘lmadi. Internetni tekshirib, qayta urinib ko‘ring.",
+  "seed.notConfigured": "Sayt hali Firebase’ga ulanmagan (VITE_FIREBASE_PROJECT_ID yo‘q)."
 }
