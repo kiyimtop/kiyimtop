@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { getAdminSession } from '../lib/adminAuth.js'
 import { fetchCategories } from '../lib/catalog.js'
 import { getChosenPalette } from '../lib/choices.js'
 import { useI18n } from '../lib/i18n.jsx'
@@ -65,6 +66,14 @@ export default function CategoryMenu() {
           })}
         </ul>
         {/* Для владельцев магазинов — внизу, чтобы не мешать покупателям. */}
+        {/* Кнопка админки — только в браузере, где админ вошёл по логину и паролю. Остальные её не видят. */}
+        {open && getAdminSession() && (
+          <Link to="/admin" className="menu-link menu-link-quiet">
+            <Icon name="check" />
+            {t('admin.title')}
+            <Icon name="chevron" className="icon menu-link-chevron" />
+          </Link>
+        )}
         <Link to="/my-shop" className="menu-link menu-link-quiet">
           <Icon name="store" />
           <span>
