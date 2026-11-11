@@ -8,6 +8,6 @@
 
 ```bash
 npm install
-cp .env.example .env   # и вписать адрес и публичный ключ Supabase
+cp .env.example .env   # и вписать настройки Firebase (см. комментарии в файле)
 npm run dev
 ```
