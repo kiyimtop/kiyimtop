@@ -2718,42 +2718,6 @@ a.sheet-apply {
   cursor: pointer;
 }
 
-.cab-variants {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.cab-variant {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 6px;
-  padding: 10px;
-  border-radius: 14px;
-  background: var(--color-white);
-}
-
-.cab-qty {
-  grid-column: 1 / -1;
-  display: grid;
-  grid-template-columns: 44px 1fr 44px;
-  gap: 6px;
-}
-
-.cab-qty button {
-  border: 0;
-  border-radius: 12px;
-  background: #ECE6D8;
-  color: var(--color-text);
-  font-size: 20px;
-  font-weight: 800;
-  cursor: pointer;
-}
-
-.cab-qty input {
-  text-align: center;
-}
-
 .cab-check {
   display: flex;
   align-items: center;
@@ -2782,12 +2746,433 @@ a.sheet-apply {
   color: var(--color-error);
 }
 
-@media (max-width: 420px) {
-  .cab-variant {
-    grid-template-columns: 1fr 1fr;
+.cab .secondary-button {
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  justify-content: center;
+}
+
+.cab .secondary-button:disabled,
+.cab .primary-button:disabled {
+  opacity: 0.6;
+}
+
+.cab-narrow {
+  max-width: 420px;
+}
+
+.cab-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.cab-back {
+  align-self: flex-start;
+}
+
+/* «Как это работает» */
+.cab-steps {
+  list-style: none;
+  counter-reset: step;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.cab-steps li {
+  counter-increment: step;
+  position: relative;
+  padding: 12px 14px 12px 54px;
+  border-radius: 16px;
+  background: var(--color-white);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 14px;
+}
+
+.cab-steps li::before {
+  content: counter(step);
+  position: absolute;
+  left: 14px;
+  top: 12px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--color-blue);
+  color: var(--color-white);
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+}
+
+.cab-steps span {
+  color: var(--color-text-muted);
+}
+
+/* Пусто: заголовок + подсказка, что делать */
+.cab-empty {
+  padding: 22px 16px;
+  border: 2px dashed #DDD6C6;
+  border-radius: 18px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 14px;
+}
+
+.cab-empty span {
+  color: var(--color-text-muted);
+}
+
+/* Разделы формы */
+.cab-section {
+  margin: 0;
+  padding: 14px;
+  border: 0;
+  border-radius: 18px;
+  background: var(--color-white);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+
+.cab-section legend {
+  float: left;
+  width: 100%;
+  padding: 0;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--color-text);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cab-section > select,
+.cab-section > .cab-input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1.5px solid #DDD6C6;
+  border-radius: 12px;
+  background: var(--color-white);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 16px;
+}
+
+.cab-step-number {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--color-blue);
+  color: var(--color-white);
+  font-size: 14px;
+  display: grid;
+  place-items: center;
+}
+
+.cab-required {
+  color: var(--color-error);
+  font-style: normal;
+}
+
+.cab-location {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--color-bg);
+  font-size: 14px;
+}
+
+.cab-location .secondary-button {
+  align-self: flex-start;
+}
+
+/* Свёрнутый блок «Дополнительно» / «Управление» */
+.cab-more {
+  border-radius: 16px;
+  background: #ECE6D8;
+  padding: 0 14px;
+}
+
+.cab-card .cab-more {
+  background: var(--color-bg);
+}
+
+.cab-more summary {
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  list-style: none;
+}
+
+.cab-more summary::-webkit-details-marker {
+  display: none;
+}
+
+.cab-more summary::after {
+  content: '▾';
+  margin-left: auto;
+}
+
+.cab-more[open] summary::after {
+  content: '▴';
+}
+
+.cab-more[open] {
+  padding-bottom: 14px;
+}
+
+.cab-more[open] > :not(summary) + :not(summary) {
+  margin-top: 10px;
+}
+
+/* Кнопка «Сохранить» всегда под рукой внизу экрана */
+.cab-savebar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  margin: 0 -16px;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+  background: linear-gradient(to top, var(--color-bg) 75%, transparent);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cab-savebar .primary-button {
+  width: 100%;
+}
+
+/* Связь с тем же товаром */
+.cab-linked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #CFE8DC;
+  font-size: 14px;
+}
+
+.cab-section .cab-row {
+  background: var(--color-bg);
+}
+
+.cab-pick {
+  flex: none;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--color-blue);
+  color: var(--color-white);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.cab-photo em {
+  position: absolute;
+  left: 4px;
+  bottom: 4px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(31, 35, 64, 0.75);
+  color: var(--color-white);
+  font-size: 11px;
+  font-style: normal;
+}
+
+.cab-photo-add {
+  flex-direction: column;
+  gap: 0;
+  line-height: 1;
+}
+
+.cab-photo-add small {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* Размеры: размер | цвет | количество | убрать */
+.cab-variant-head,
+.cab-variant {
+  display: grid;
+  grid-template-columns: minmax(0, 0.7fr) minmax(0, 1.2fr) 112px 24px;
+  gap: 6px;
+  align-items: center;
+}
+
+.cab-variant-head {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.cab-variant input {
+  min-height: 42px;
+  padding: 8px 10px;
+}
+
+.cab-qty {
+  display: grid;
+  grid-template-columns: 32px 1fr 32px;
+  gap: 3px;
+}
+
+.cab-qty button {
+  border: 0;
+  border-radius: 10px;
+  background: #ECE6D8;
+  color: var(--color-text);
+  font-size: 20px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cab-qty input {
+  text-align: center;
+  padding: 8px 2px;
+}
+
+.cab-remove {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.cab-check span {
+  display: flex;
+  flex-direction: column;
+}
+
+.cab-check small {
+  font-weight: 500;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+/* Админка */
+.cab-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.cab-stat {
+  padding: 12px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--color-white);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  cursor: pointer;
+}
+
+.cab-stat b {
+  font-size: 26px;
+  line-height: 1.1;
+}
+
+.cab-stat span {
+  font-size: 12px;
+  color: var(--color-text-muted);
+}
+
+.cab-stat.attention {
+  background: var(--color-orange);
+}
+
+.cab-stat.attention span {
+  color: var(--color-text);
+}
+
+.cab-card-attention {
+  box-shadow: inset 4px 0 0 var(--color-orange);
+}
+
+.cab-facts {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  font-size: 14px;
+}
+
+.cab-facts dt {
+  color: var(--color-text-muted);
+}
+
+.cab-facts dd {
+  margin: 0;
+}
+
+.cab-facts a {
+  color: var(--color-blue);
+}
+
+.cab-inline {
+  display: flex;
+  gap: 8px;
+}
+
+.cab-inline .cab-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Меню: ссылка для магазинов — спокойнее, внизу */
+.menu-link-quiet {
+  margin: 20px 0 0;
+  background: transparent;
+  border: 1.5px dashed #DDD6C6;
+  font-weight: 700;
+}
+
+.menu-link-quiet span {
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-link-quiet small {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 380px) {
+  .cab-variant-head {
+    display: none;
   }
 
-  .cab-variant input:first-child {
-    grid-column: 1 / -1;
+  .cab-variant {
+    grid-template-columns: 1fr 1fr 28px;
+  }
+
+  .cab-qty {
+    grid-column: 1 / 3;
   }
 }

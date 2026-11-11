@@ -39,11 +39,6 @@ export default function CategoryMenu() {
           {t('booking.title')}
           <Icon name="chevron" className="icon menu-link-chevron" />
         </Link>
-        <Link to="/my-shop" className="menu-link">
-          <Icon name="bag" />
-          {t('seller.menu')}
-          <Icon name="chevron" className="icon menu-link-chevron" />
-        </Link>
         <h3 className="filter-label">{t('categories.title')}</h3>
         <ul className="menu-grid">
           {categories.map((category) => {
@@ -69,6 +64,15 @@ export default function CategoryMenu() {
             )
           })}
         </ul>
+        {/* Для владельцев магазинов — внизу, чтобы не мешать покупателям. */}
+        <Link to="/my-shop" className="menu-link menu-link-quiet">
+          <Icon name="store" />
+          <span>
+            {t('seller.menu')}
+            <small>{t('seller.menuHint')}</small>
+          </span>
+          <Icon name="chevron" className="icon menu-link-chevron" />
+        </Link>
       </Sheet>
     </>
   )

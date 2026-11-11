@@ -62,11 +62,17 @@ export function I18nProvider({ children }) {
     })
   }
 
+  // Только дата по Ташкенту: «31 декабря» / «31-dekabr».
+  const formatDate = (value) => {
+    const tashkent = new Date(new Date(value).getTime() + 5 * 60 * 60 * 1000)
+    return t('date.day', { day: tashkent.getUTCDate(), month: t(`month.${tashkent.getUTCMonth() + 1}`) })
+  }
+
   // Форма слова для числа: 'one' (1, 21, 31 …) или 'many'. В узбекском форма одна.
   const plural = (n) => (language === 'ru' && n % 10 === 1 && n % 100 !== 11 ? 'one' : 'many')
 
   return (
-    <I18nContext.Provider value={{ language, setLanguage, t, formatPrice, formatDistance, formatDateTime, plural }}>
+    <I18nContext.Provider value={{ language, setLanguage, t, formatPrice, formatDistance, formatDateTime, formatDate, plural }}>
       {children}
     </I18nContext.Provider>
   )
