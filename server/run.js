@@ -1,6 +1,8 @@
 // Переходник: общий обработчик из handlers.js → формат Cloudflare Pages Functions.
 
 function toResponseParts(result) {
+  // Готовый ответ (например, фото из Telegram) — отдаём как есть.
+  if (result.response) return { response: result.response }
   if (result.html !== undefined) return { body: result.html, type: 'text/html; charset=utf-8' }
   return { body: JSON.stringify(result.json), type: 'application/json; charset=utf-8' }
 }
@@ -25,7 +27,8 @@ export function forCloudflare(name, handler) {
       body: parseJson(text),
       env,
     })
-    const { body, type } = toResponseParts(result)
+    const { body, type, response } = toResponseParts(result)
+    if (response) return response
     return new Response(body, { status: result.status, headers: { 'Content-Type': type, 'Cache-Control': 'no-store' } })
   }
 }

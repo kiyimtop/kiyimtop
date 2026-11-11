@@ -65,6 +65,7 @@ export async function verifyInitData(initData, botToken, now = Date.now()) {
     id: user.id,
     name: [user.first_name, user.last_name].filter(Boolean).join(' ') || null,
     username: user.username ?? null,
+    language: user.language_code ?? null,
   }
 }
 

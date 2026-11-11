@@ -230,6 +230,27 @@ export default function Product({ id, slug }) {
             {t('shop.allProducts')}
           </Link>
         </section>
+
+        {/* Тот же товар в других магазинах — сравнить цену и наличие. */}
+        {product.offers.length > 0 && (
+          <section className="pp-offers">
+            <h2 className="pp-shop-label">{t('product.otherShops', { n: product.offers.length })}</h2>
+            <ul className="offer-list">
+              {product.offers.map((offer) => (
+                <li key={offer.id}>
+                  <Link to={`/c/${category.slug}/p/${offer.id}`} className="offer-row">
+                    <span className="offer-shop">{offer.shop?.name}</span>
+                    <span className="offer-sizes">
+                      {offer.inStock ? offer.sizes.join(', ') || t('product.inStockShort') : t('product.outOfStock')}
+                    </span>
+                    <b className="offer-price">{formatPrice(offer.price)}</b>
+                    <Icon name="chevron" />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
       </div>
     </article>
   )

@@ -16,6 +16,8 @@ export function appPath(pathname = window.location.pathname) {
 //   /s/<id>       — магазин: адрес, часы и все его товары
 //   /search       — поиск (/search?q=krossovka)
 //   /bookings     — мои брони
+//   /my-shop      — кабинет магазина (заявка, товары, брони)
+//   /admin        — админка (заявки магазинов, подписки)
 //   /seed         — загрузить тестовые магазины в новую базу Firebase (один раз)
 function parse(pathname) {
   const product = pathname.match(/^\/c\/([\w-]+)\/p\/([\w-]+)\/?$/)
@@ -26,6 +28,8 @@ function parse(pathname) {
   if (shop) return { name: 'shop', id: shop[1], parent: '/' }
   if (/^\/search\/?$/.test(pathname)) return { name: 'search', parent: '/' }
   if (/^\/bookings\/?$/.test(pathname)) return { name: 'bookings', parent: '/' }
+  if (/^\/my-shop\/?$/.test(pathname)) return { name: 'my-shop', parent: '/' }
+  if (/^\/admin\/?$/.test(pathname)) return { name: 'admin', parent: '/' }
   if (/^\/seed\/?$/.test(pathname)) return { name: 'seed', parent: '/' }
   return { name: 'home', parent: null }
 }

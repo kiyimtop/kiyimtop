@@ -8,10 +8,12 @@ import { useI18n } from './lib/i18n.jsx'
 import { getStartParam, isTelegram } from './lib/platform.js'
 import { appPath, goBack, Link, openStartPage, useRoute } from './lib/router.jsx'
 import CategoryShops from './pages/CategoryShops.jsx'
+import Admin from './pages/Admin.jsx'
 import Home from './pages/Home.jsx'
 import MyBookings from './pages/MyBookings.jsx'
 import Product from './pages/Product.jsx'
 import Search from './pages/Search.jsx'
+import SellerCabinet from './pages/SellerCabinet.jsx'
 import Seed from './pages/Seed.jsx'
 import Shop from './pages/Shop.jsx'
 
@@ -36,6 +38,7 @@ export default function App() {
     const book = start.match(/^book__([0-9a-f-]{36})$/i)
     const product = start.match(/^([\w-]+)__([0-9a-f-]{36})$/i)
     if (start === 'bookings') openStartPage('/bookings')
+    else if (start === 'shop') openStartPage('/my-shop')
     else if (book) {
       fetchVariant(book[1])
         .then((target) => {
@@ -66,6 +69,8 @@ export default function App() {
         {route.name === 'shop' && <Shop key={route.id} id={route.id} />}
         {route.name === 'search' && <Search />}
         {route.name === 'bookings' && <MyBookings />}
+        {route.name === 'my-shop' && <SellerCabinet />}
+        {route.name === 'admin' && <Admin />}
         {route.name === 'seed' && <Seed />}
         {route.name === 'home' && <Home />}
       </main>

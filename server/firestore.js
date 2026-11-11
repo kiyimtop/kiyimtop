@@ -78,7 +78,7 @@ export class Firestore {
     return doc ? fromDocument(doc) : null
   }
 
-  // Документы, где field <op> value. op: EQUAL, LESS_THAN, GREATER_THAN …
+  // Документы, где field <op> value. op: EQUAL, LESS_THAN, GREATER_THAN, ARRAY_CONTAINS …
   // Только по одному полю — для этого Firestore не нужны дополнительные индексы.
   async where(collection, field, op, value, { limit = 500, transaction } = {}) {
     const structuredQuery = {
@@ -87,6 +87,12 @@ export class Firestore {
       limit,
     }
     const rows = await this.request(':runQuery', { body: { structuredQuery, ...(transaction ? { transaction } : {}) } })
+    return rows.filter((row) => row.document).map((row) => fromDocument(row.document))
+  }
+
+  // Все документы коллекции (для админки: магазинов немного).
+  async all(collection, { limit = 1000 } = {}) {
+    const rows = await this.request(':runQuery', { body: { structuredQuery: { from: [{ collectionId: collection }], limit } } })
     return rows.filter((row) => row.document).map((row) => fromDocument(row.document))
   }
 

@@ -1,3 +1,4 @@
+import { asset } from './base.js'
 import { readCollection } from './firebase.js'
 import { compareSizes } from './sizes.js'
 
@@ -23,8 +24,10 @@ async function loadCatalog() {
     readCollection('shops', 'is_active', true),
     readCollection('products', 'is_active', true),
   ])
-    .then(([categories, shops, products]) => {
+    .then(([categories, allShops, products]) => {
       categories.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+      // Подписка закончилась — магазин не показываем (сервер тоже скрывает его, это на всякий случай).
+      const shops = allShops.filter((shop) => !shop.subscription_until || Date.parse(shop.subscription_until) > Date.now())
       const shopsById = new Map(shops.map((shop) => [shop.id, shop]))
       const data = {
         categories,
@@ -33,7 +36,7 @@ async function loadCatalog() {
         // Товары скрытого магазина не показываем. Сначала дешёвые.
         products: products
           .filter((product) => shopsById.has(product.shop_id))
-          .map((product) => ({ ...product, variants: product.variants ?? [], photo_urls: product.photo_urls ?? [] }))
+          .map((product) => ({ ...product, variants: product.variants ?? [], photo_urls: (product.photo_urls ?? []).map(photoSrc) }))
           .sort((a, b) => a.price - b.price),
       }
       catalogCache = { at: Date.now(), data }
@@ -44,6 +47,9 @@ async function loadCatalog() {
     })
   return catalogLoading
 }
+
+// Фото из Telegram хранятся как «/api/photo?id=…» — адрес нашего сервера (с учётом BASE).
+export const photoSrc = (url) => (url.startsWith('/api/') ? asset(url) : url)
 
 // Категория без лишнего: id, slug, названия, эмодзи.
 const categoryInfo = ({ id, slug, name_uz, name_ru, emoji, sort_order }) => ({ id, slug, name_uz, name_ru, emoji, sort_order })
@@ -163,5 +169,16 @@ export async function fetchProduct(id) {
   if (!product) return null
   const category = catalog.categories.find((c) => c.id === product.category_id)
   if (!category) return null
-  return { ...product, category: categoryInfo(category), shop: catalog.shopsById.get(product.shop_id) }
+  // Тот же товар в других магазинах (общий model_id): где ещё есть и почём. Сначала те, где есть в наличии, и дешёвые.
+  const model = product.model_id ?? product.id
+  const offers = catalog.products
+    .filter((p) => p.id !== product.id && (p.model_id ?? p.id) === model)
+    .map((p) => withStock({ ...p, shop: catalog.shopsById.get(p.shop_id) }))
+    .sort((a, b) => b.inStock - a.inStock || a.price - b.price)
+  return { ...product, category: categoryInfo(category), shop: catalog.shopsById.get(product.shop_id), offers }
+}
+
+// Сбросить запомненный каталог (после изменений в кабинете магазина — сразу видно новое).
+export function clearCatalogCache() {
+  catalogCache = null
 }

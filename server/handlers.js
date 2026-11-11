@@ -1,5 +1,6 @@
 import { botTexts } from './bot-texts.js'
 import { firestoreFromEnv } from './firestore.js'
+import { adminAction, bookingButtons, isAdmin, notifyShop, setBookingStatus } from './seller.js'
 import { callTelegram, createSession, randomCode, randomToken, userFromAuthorization, webhookSecret } from './telegram.js'
 
 // Серверная часть KiyimTop. Подключается к площадке через переходники functions/api/*.js (Cloudflare Pages).
@@ -58,6 +59,8 @@ export async function bookings(req) {
     if (!ID.test(variantId ?? '') || (productId != null && !ID.test(productId))) return json(400, { error: 'not_found' })
     try {
       const booking = await createBooking(db, user, variantId, productId)
+      // Магазину — сообщение в боте с кнопками «Подтвердить» / «Нет в наличии».
+      await notifyShop(req.env, db, botToken, booking).catch((error) => console.error('notifyShop:', error))
       return json(201, { booking: bookingOut(booking) })
     } catch (error) {
       if (error.reason) return json(409, { error: error.reason })
@@ -69,7 +72,8 @@ export async function bookings(req) {
     const id = req.url.searchParams.get('id')
     if (!ID.test(id ?? '')) return json(404, { error: 'not_found' })
     try {
-      await cancelBooking(db, user, id)
+      const cancelled = await cancelBooking(db, user, id)
+      await notifyCancelled(db, botToken, cancelled).catch((error) => console.error('notifyCancelled:', error))
       return json(200, { ok: true })
     } catch (error) {
       if (error.reason) return json(404, { error: error.reason })
@@ -113,6 +117,7 @@ async function createBooking(db, user, variantId, productId) {
       telegram_user_id: user.id,
       buyer_name: user.name ?? null,
       buyer_username: user.username ?? null,
+      buyer_lang: user.language ?? null,
       product_id: product.id,
       variant_id: variantId,
       shop_id: shop.id,
@@ -148,8 +153,20 @@ async function cancelBooking(db, user, id) {
     const writes = [db.update('bookings', id, { status: 'cancelled', updated_at: new Date() })]
     // Просроченная бронь уже не держит вещь (или скоро отпустит её сама) — тогда количество не трогаем.
     if (product && Date.parse(booking.expires_at) > Date.now()) writes.push(restock(db, product, [booking]))
-    return { writes, result: null }
+    return { writes, result: booking }
   })
+}
+
+// Покупатель отменил — магазину сообщение (чтобы не искал вещь зря).
+async function notifyCancelled(db, botToken, booking) {
+  const shop = await db.get('shops', booking.shop_id)
+  const t = botTexts(shop?.owner_lang)
+  for (const chatId of shop?.owner_ids ?? []) {
+    await callTelegram(botToken, 'sendMessage', {
+      chat_id: chatId,
+      text: `${t.statusLine.cancelled}\n${booking.product_name_ru ?? booking.product_name_uz} · ${[booking.size, booking.color_ru].filter(Boolean).join(' · ')}\n${booking.code}`,
+    }).catch((error) => console.error('notify cancel:', error.message))
+  }
 }
 
 // Вернуть по одной штуке за каждую бронь (запись для commit).
@@ -273,7 +290,7 @@ export async function botWebhook(req) {
   const db = firestoreFromEnv(req.env)
   try {
     if (req.body?.message) await onMessage(req, db, req.body.message, botToken)
-    else if (req.body?.callback_query) await onButton(db, req.body.callback_query, botToken)
+    else if (req.body?.callback_query) await onButton(req, db, req.body.callback_query, botToken)
   } catch (error) {
     console.error('bot-webhook:', error)
   }
@@ -281,8 +298,8 @@ export async function botWebhook(req) {
 }
 
 // Кнопка под сообщением, которая открывает KiyimTop прямо в Telegram (Mini App).
-const openButton = (req, t, path = '') => ({
-  inline_keyboard: [[{ text: t.open, web_app: { url: siteUrl(req) + path } }]],
+const openButton = (req, t, path = '', label = t.open) => ({
+  inline_keyboard: [[{ text: label, web_app: { url: siteUrl(req) + path } }]],
 })
 
 async function onMessage(req, db, message, botToken) {
@@ -293,6 +310,12 @@ async function onMessage(req, db, message, botToken) {
 
   const login = text.match(/^\/start login_([A-Za-z0-9_-]{20,40})$/)
   if (!login) {
+    if (text === '/shop') {
+      return callTelegram(botToken, 'sendMessage', { chat_id: chatId, text: t.shopIntro, reply_markup: openButton(req, t, 'my-shop', t.shopOpen) })
+    }
+    if (text === '/admin' && isAdmin(req.env, message.from?.id)) {
+      return callTelegram(botToken, 'sendMessage', { chat_id: chatId, text: t.adminIntro, reply_markup: openButton(req, t, 'admin', t.adminOpen) })
+    }
     if (text === '/bookings') {
       return callTelegram(botToken, 'sendMessage', { chat_id: chatId, text: t.bookings, reply_markup: openButton(req, t, 'bookings') })
     }
@@ -312,12 +335,51 @@ async function onMessage(req, db, message, botToken) {
   })
 }
 
-async function onButton(db, query, botToken) {
+async function onButton(req, db, query, botToken) {
   const t = botTexts(query.from?.language_code)
-  const [action, token] = String(query.data ?? '').split(':')
-  const edit = (text) =>
+  const [action, token, extra] = String(query.data ?? '').split(':')
+  const edit = (text, reply_markup) =>
     query.message &&
-    callTelegram(botToken, 'editMessageText', { chat_id: query.message.chat.id, message_id: query.message.message_id, text })
+    callTelegram(botToken, 'editMessageText', {
+      chat_id: query.message.chat.id,
+      message_id: query.message.message_id,
+      text,
+      ...(reply_markup ? { reply_markup } : {}),
+    })
+  const answer = (text) => callTelegram(botToken, 'answerCallbackQuery', { callback_query_id: query.id, ...(text ? { text, show_alert: true } : {}) })
+  const user = { id: query.from.id, name: [query.from.first_name, query.from.last_name].filter(Boolean).join(' ') || null, username: query.from.username ?? null }
+  const ctx = db && { db, botToken, user, admin: isAdmin(req.env, user.id), env: req.env }
+
+  // Ответ магазина на бронь: bk:<статус>:<номер брони>. Нажать может владелец этого магазина или админ.
+  if (action === 'bk' && ctx) {
+    const booking = await db.get('bookings', extra ?? '')
+    const shop = booking && (await db.get('shops', booking.shop_id))
+    if (!booking || !(ctx.admin || shop?.owner_ids?.includes(user.id))) return answer(t.notAllowed)
+    try {
+      const updated = await setBookingStatus(ctx, booking.id, token, booking.shop_id)
+      await answer()
+      return edit(`${query.message?.text ?? ''}\n\n${t.statusLine[updated.status]}`, bookingButtons(t, updated.id, updated.status))
+    } catch (error) {
+      if (!error.reason) throw error
+      const fresh = await db.get('bookings', booking.id)
+      const state = fresh && Date.parse(fresh.expires_at) <= Date.now() && ['new', 'confirmed'].includes(fresh.status) ? 'expired' : fresh?.status
+      await answer(t.statusLine[state] ?? t.notAllowed)
+      return edit(`${query.message?.text ?? ''}\n\n${t.statusLine[state] ?? ''}`, { inline_keyboard: [] })
+    }
+  }
+
+  // Заявка магазина: ap:approve|reject:<номер магазина>. Только админ.
+  if (action === 'ap' && ctx) {
+    if (!ctx.admin) return answer(t.notAllowed)
+    try {
+      await adminAction(ctx, token, extra)
+      await answer()
+      return edit(`${query.message?.text ?? ''}\n\n${token === 'approve' ? t.btnApprove : t.btnReject}`, { inline_keyboard: [] })
+    } catch (error) {
+      if (!error.reason) throw error
+      return answer(t.notAllowed)
+    }
+  }
 
   if ((action === 'login' || action === 'nologin') && db && LOGIN_TOKEN.test(token ?? '')) {
     const now = new Date()
@@ -377,6 +439,7 @@ export async function botSetup(req) {
         commands: [
           { command: 'start', description: t.commandStart },
           { command: 'bookings', description: t.commandBookings },
+          { command: 'shop', description: t.commandShop },
         ],
         ...(language ? { language_code: language } : {}),
       })

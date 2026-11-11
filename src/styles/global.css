@@ -2414,3 +2414,380 @@ a.sheet-apply {
 .seed-error {
   color: var(--color-error);
 }
+
+/* ---------- Тот же товар в других магазинах (страница товара) ---------- */
+.pp-offers {
+  margin-top: 24px;
+}
+
+.offer-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.offer-row {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  grid-template-areas: 'shop price chevron' 'sizes price chevron';
+  align-items: center;
+  column-gap: 10px;
+  padding: 12px 14px;
+  border-radius: 16px;
+  background: var(--color-white);
+  color: var(--color-text);
+  text-decoration: none;
+}
+
+.offer-shop {
+  grid-area: shop;
+  font-weight: 700;
+}
+
+.offer-sizes {
+  grid-area: sizes;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.offer-price {
+  grid-area: price;
+  white-space: nowrap;
+}
+
+.offer-row .icon {
+  grid-area: chevron;
+  width: 18px;
+  height: 18px;
+  color: var(--color-text-muted);
+}
+
+/* ---------- Кабинет магазина и админка ---------- */
+.cab {
+  width: 100%;
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cab-head {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.cab-text {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.cab-muted {
+  color: var(--color-text-muted);
+}
+
+.cab-tabs {
+  margin: 0;
+}
+
+.cab-badge {
+  margin-left: 6px;
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 10px;
+  background: var(--color-orange);
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 20px;
+}
+
+.cab-status {
+  display: inline-block;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  background: #E8E3D6;
+}
+
+.cab-status.active {
+  background: #CFE8DC;
+  color: var(--color-green);
+}
+
+.cab-status.pending {
+  background: #FFE2CC;
+}
+
+.cab-status.blocked,
+.cab-status.rejected {
+  background: #F6D6D3;
+  color: var(--color-error);
+}
+
+.cab-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.cab-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--color-white);
+  color: var(--color-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.cab-product {
+  justify-content: flex-start;
+}
+
+.cab-product img,
+.cab-thumb {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 12px;
+  object-fit: cover;
+  background: #E8E3D6;
+}
+
+.cab-product-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.cab-product-text b {
+  font-size: 15px;
+  color: var(--color-text);
+}
+
+.cab-card {
+  padding: 14px;
+  border-radius: 18px;
+  background: var(--color-white);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cab-card-title {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cab-code {
+  font-size: 18px;
+  letter-spacing: 2px;
+}
+
+.cab-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.cab-add {
+  align-self: flex-start;
+}
+
+.cab-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.cab-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-text-muted);
+}
+
+.cab-field input,
+.cab-field select,
+.cab-field textarea,
+.cab-input,
+.cab-variant input {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1.5px solid #DDD6C6;
+  border-radius: 12px;
+  background: var(--color-white);
+  color: var(--color-text);
+  font: inherit;
+  font-size: 16px; /* меньше 16px — iPhone увеличивает страницу при вводе */
+  font-weight: 500;
+}
+
+.cab-field input:focus,
+.cab-field select:focus,
+.cab-field textarea:focus,
+.cab-input:focus,
+.cab-variant input:focus {
+  outline: none;
+  border-color: var(--color-blue);
+}
+
+.cab-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.cab-box {
+  padding: 12px;
+  border-radius: 16px;
+  background: #ECE6D8;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cab-photos {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cab-photo {
+  position: relative;
+  width: 84px;
+  height: 84px;
+  border-radius: 14px;
+  overflow: hidden;
+  background: #E8E3D6;
+}
+
+.cab-photo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cab-photo button {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(31, 35, 64, 0.75);
+  color: var(--color-white);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.cab-photo-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed #C9C0AC;
+  background: transparent;
+  font-size: 32px;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.cab-variants {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cab-variant {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 14px;
+  background: var(--color-white);
+}
+
+.cab-qty {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  gap: 6px;
+}
+
+.cab-qty button {
+  border: 0;
+  border-radius: 12px;
+  background: #ECE6D8;
+  color: var(--color-text);
+  font-size: 20px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.cab-qty input {
+  text-align: center;
+}
+
+.cab-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+}
+
+.cab-check input {
+  width: 22px;
+  height: 22px;
+}
+
+.cab-error {
+  margin: 0;
+  color: var(--color-error);
+  font-size: 14px;
+}
+
+.cab-ok {
+  margin: 0;
+  color: var(--color-green);
+  font-weight: 700;
+}
+
+.cab-danger {
+  color: var(--color-error);
+}
+
+@media (max-width: 420px) {
+  .cab-variant {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .cab-variant input:first-child {
+    grid-column: 1 / -1;
+  }
+}
