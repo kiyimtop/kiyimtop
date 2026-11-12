@@ -1,0 +1,202 @@
+// Правила доступа к базе Firebase (Firestore) для KiyimTop — как в TheStarth: сайт сам читает и пишет
+// в базу, а эти правила решают, кому что можно. Сервер с ключом сервисного аккаунта больше не нужен.
+// Куда вставить: Firebase → Firestore Database → вкладка Rules → заменить всё этим текстом → Publish.
+//
+// Роли (поле role в users/<uid>): admin — всё; moderator — магазины, каталог, брони, блокировка
+// покупателей; seller — продавец (ставится сам, когда магазин одобрен); пусто — покупатель.
+// Первого админа владелец ставит руками: Firestore → users → свой документ → role = "admin" (строка).
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------- Кто пришёл ----------
+    function signedIn() { return request.auth != null; }
+    function uid() { return request.auth.uid; }
+    function userPath(id) { return /databases/$(database)/documents/users/$(id); }
+    function hasProfile() { return signedIn() && exists(userPath(uid())); }
+    function me() { return get(userPath(uid())).data; }
+    function role() { return hasProfile() ? me().get('role', null) : null; }
+    function isAdmin() { return role() == 'admin'; }
+    function isStaff() { return role() == 'admin' || role() == 'moderator'; }
+    function notBlocked() { return !hasProfile() || me().get('blocked', false) != true; }
+    function verified() { return signedIn() && request.auth.token.get('email_verified', false) == true; }
+    function changed() { return request.resource.data.diff(resource.data).affectedKeys(); }
+    function str(v, max) { return v is string && v.size() <= max; }
+    function optStr(v, max) { return v == null || str(v, max); }
+
+    // ---------- Пользователи ----------
+    // Человек создаёт свой профиль и меняет имя, фамилию, телефон. Роль и блокировку — только админ
+    // (модератор может блокировать покупателей и продавцов). Telegram пишет только сервер бота;
+    // сам человек может его только отвязать (очистить).
+    function profileOk(d) {
+      return str(d.name, 80) && d.name.size() > 0
+        && optStr(d.get('surname', null), 80)
+        && (d.get('phone', null) == null || (d.phone is string && d.phone.matches('[+][0-9]{10,15}')))
+        && (d.get('lang', 'uz') in ['uz', 'ru']);
+    }
+    match /users/{userId} {
+      allow read: if signedIn() && (uid() == userId || isStaff());
+      allow create: if signedIn() && uid() == userId
+        && request.resource.data.keys().hasOnly(['email', 'email_verified', 'name', 'surname', 'phone', 'role', 'blocked', 'lang', 'created_at'])
+        && request.resource.data.role == null
+        && request.resource.data.blocked == false
+        && request.resource.data.created_at == request.time
+        && request.resource.data.email == request.auth.token.get('email', null)
+        && profileOk(request.resource.data);
+      allow update: if signedIn() && (
+        (uid() == userId
+          && changed().hasOnly(['email', 'email_verified', 'name', 'surname', 'phone', 'lang'])
+          && request.resource.data.get('email', null) == request.auth.token.get('email', resource.data.get('email', null))
+          && profileOk(request.resource.data))
+        || (uid() == userId
+          && changed().hasOnly(['telegram_id', 'telegram_username', 'telegram_name'])
+          && request.resource.data.get('telegram_id', null) == null)
+        || (isAdmin() && uid() != userId)
+        || (isStaff() && uid() != userId && changed().hasOnly(['blocked'])
+          && !(resource.data.get('role', null) in ['admin', 'moderator']))
+        || (isStaff() && changed().hasOnly(['role'])
+          && request.resource.data.role == 'seller' && resource.data.get('role', null) == null)
+      );
+      allow delete: if isAdmin() && uid() != userId;
+    }
+
+    // ---------- Категории и настройки ----------
+    match /categories/{id} {
+      allow read: if true;
+      allow write: if isStaff();
+    }
+    match /settings/{id} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // ---------- Магазины ----------
+    function shopInfoOk(d) {
+      return str(d.name, 80) && d.name.size() > 0
+        && str(d.address_uz, 200) && str(d.phone, 30)
+        && optStr(d.get('description_uz', null), 500) && optStr(d.get('description_ru', null), 500)
+        && optStr(d.get('address_ru', null), 200)
+        && optStr(d.get('landmark_uz', null), 200) && optStr(d.get('landmark_ru', null), 200)
+        && optStr(d.get('telegram_username', null), 40);
+    }
+    match /shops/{shopId} {
+      function isOwner() { return signedIn() && uid() in resource.data.get('owner_uids', []); }
+      allow read: if resource.data.get('is_active', false) == true || isOwner() || isStaff();
+      // Заявка: только от своего имени, статус «ждёт решения», скрыт, без подписки.
+      allow create: if signedIn() && notBlocked()
+        && request.resource.data.keys().hasOnly(['name', 'description_uz', 'description_ru', 'address_uz', 'address_ru',
+          'landmark_uz', 'landmark_ru', 'district', 'latitude', 'longitude', 'phone', 'telegram_username', 'opens_at',
+          'closes_at', 'owner_uids', 'owner_lang', 'status', 'is_active', 'subscription_until', 'created_at'])
+        && request.resource.data.owner_uids == [uid()]
+        && request.resource.data.status == 'pending'
+        && request.resource.data.is_active == false
+        && request.resource.data.subscription_until == null
+        && request.resource.data.created_at == request.time
+        && shopInfoOk(request.resource.data);
+      allow update: if isStaff()
+        // Владелец меняет только данные магазина (не статус, не подписку, не владельцев).
+        || (isOwner() && resource.data.get('status', 'active') in ['pending', 'active']
+          && changed().hasOnly(['name', 'description_uz', 'description_ru', 'address_uz', 'address_ru', 'landmark_uz',
+            'landmark_ru', 'district', 'latitude', 'longitude', 'phone', 'telegram_username', 'opens_at', 'closes_at'])
+          && shopInfoOk(request.resource.data))
+        // Подписка закончилась — любой вошедший может скрыть магазин (будильника нет).
+        || (signedIn() && changed().hasOnly(['is_active']) && request.resource.data.is_active == false
+          && resource.data.get('subscription_until', null) != null && resource.data.subscription_until < request.time);
+      allow delete: if isAdmin();
+    }
+
+    // ---------- Товары ----------
+    function shopData(id) { return get(/databases/$(database)/documents/shops/$(id)).data; }
+    function ownsActiveShop(id) {
+      return signedIn() && uid() in shopData(id).get('owner_uids', []) && shopData(id).get('status', 'active') == 'active';
+    }
+    function productOk(d) {
+      return d.keys().hasOnly(['shop_id', 'model_id', 'category_id', 'name_uz', 'name_ru', 'description_uz', 'description_ru',
+          'brand', 'gender', 'price', 'photo_urls', 'is_active', 'variants', 'updated_at', 'hold_ref', 'hold_op', 'hold_idx', 'id'])
+        && str(d.name_uz, 120) && str(d.name_ru, 120)
+        && d.price is int && d.price >= 0
+        && d.variants is list && d.variants.size() > 0 && d.variants.size() <= 80
+        && d.is_active is bool
+        && exists(/databases/$(database)/documents/categories/$(d.category_id));
+    }
+    match /products/{productId} {
+      // Бронь: количество одного варианта меняется ровно на 1 вместе с бронью (hold_ref — её номер):
+      //   take — новая бронь (−1), give — бронь отменена или истекла (+1). Остальное в товаре не меняется.
+      function stockMove() {
+        let a = resource.data.variants;
+        let b = request.resource.data.variants;
+        let i = request.resource.data.hold_idx;
+        let bookingPath = /databases/$(database)/documents/bookings/$(request.resource.data.hold_ref);
+        let after = getAfter(bookingPath).data;
+        return changed().hasOnly(['variants', 'hold_ref', 'hold_op', 'hold_idx'])
+          && i is int && i >= 0 && i < a.size() && b.size() == a.size()
+          && b[0:i] == a[0:i] && b[i + 1:a.size()] == a[i + 1:a.size()]
+          && b[i].diff(a[i]).affectedKeys().hasOnly(['quantity'])
+          && after.product_id == productId && after.variant_id == a[i].id
+          && ((request.resource.data.hold_op == 'take' && !exists(bookingPath)
+                && after.status == 'new' && after.user_id == uid()
+                && a[i].quantity > 0 && b[i].quantity == a[i].quantity - 1)
+            || (request.resource.data.hold_op == 'give' && get(bookingPath).data.status in ['new', 'confirmed']
+                && after.status in ['cancelled', 'expired'] && b[i].quantity == a[i].quantity + 1));
+      }
+      allow read: if resource.data.get('is_active', false) == true || signedIn();
+      allow create: if isStaff() || (ownsActiveShop(request.resource.data.shop_id) && productOk(request.resource.data));
+      allow update: if isStaff()
+        || (ownsActiveShop(resource.data.shop_id) && request.resource.data.shop_id == resource.data.shop_id && productOk(request.resource.data))
+        || (signedIn() && stockMove());
+      allow delete: if isStaff() || ownsActiveShop(resource.data.shop_id);
+    }
+
+    // ---------- Брони ----------
+    match /bookings/{bookingId} {
+      function isBuyer() { return signedIn() && resource.data.user_id == uid(); }
+      function isShopOwner() { return signedIn() && uid() in resource.data.get('owner_uids', []); }
+      function isOpen() { return resource.data.status in ['new', 'confirmed']; }
+      function onlyStatus() { return changed().hasOnly(['status', 'updated_at']) && request.resource.data.updated_at == request.time; }
+      // Новая бронь: только своя, email подтверждён, не заблокирован, срок ~2 дня, цена и владельцы — как в базе,
+      // и в той же операции у товара забрана одна штука (hold_ref = номер этой брони).
+      function newOk() {
+        let d = request.resource.data;
+        let product = get(/databases/$(database)/documents/products/$(d.product_id)).data;
+        let productAfter = getAfter(/databases/$(database)/documents/products/$(d.product_id)).data;
+        let shop = get(/databases/$(database)/documents/shops/$(product.shop_id)).data;
+        return verified() && notBlocked()
+          && d.user_id == uid() && d.status == 'new'
+          && d.created_at == request.time && d.updated_at == request.time
+          && d.expires_at > request.time + duration.value(1, 'd')
+          && d.expires_at < request.time + duration.value(3, 'd')
+          && product.get('is_active', false) == true && shop.get('is_active', false) == true
+          && d.shop_id == product.shop_id && d.price == product.price
+          && d.owner_uids == shop.get('owner_uids', [])
+          && productAfter.get('hold_ref', '') == bookingId && productAfter.get('hold_op', '') == 'take';
+      }
+      allow read: if isBuyer() || isShopOwner() || isStaff();
+      allow create: if signedIn() && newOk();
+      allow update: if isStaff()
+        // Покупатель отменяет свою действующую бронь.
+        || (isBuyer() && isOpen() && onlyStatus() && request.resource.data.status == 'cancelled')
+        // Срок вышел — бронь закрывает покупатель или магазин (вещь возвращается).
+        || ((isBuyer() || isShopOwner()) && isOpen() && onlyStatus()
+          && request.resource.data.status == 'expired' && resource.data.expires_at <= request.time)
+        // Магазин отвечает: подтвердил / нет в наличии / выдан.
+        || (isShopOwner() && onlyStatus() && resource.data.expires_at > request.time
+          && ((resource.data.status == 'new' && request.resource.data.status in ['confirmed', 'unavailable', 'picked_up'])
+            || (resource.data.status == 'confirmed' && request.resource.data.status in ['unavailable', 'picked_up'])));
+      allow delete: if isStaff();
+    }
+
+    // ---------- Деньги и журнал ----------
+    // Оплаты подписок (для «Аналитики»): записывает админ или модератор, исправляет только админ.
+    match /payments/{id} {
+      allow read, create: if isStaff();
+      allow update, delete: if isAdmin();
+    }
+    // Журнал действий админов: дописывать можно только от своего имени, менять и удалять — никому.
+    match /admin_log/{id} {
+      allow read: if isAdmin();
+      allow create: if isStaff() && request.resource.data.by == uid() && request.resource.data.at == request.time;
+    }
+
+    // Остальное (tg_links, старые login_requests …) — только сервер бота (сервисный аккаунт).
+  }
+}
