@@ -2,6 +2,7 @@
 // Адреса /api/… обрабатывает сервер (server/handlers.js и server/seller.js),
 // всё остальное — готовые страницы сайта из папки dist (env.ASSETS).
 // Папка functions/ — то же самое для Cloudflare Pages (если сайт создан как Pages, а не как Worker).
+import { adminLogin } from './admin-auth.js'
 import { botSetup, botWebhook, bookings, login } from './handlers.js'
 import { forCloudflare } from './run.js'
 import { admin, me, photo, shop } from './seller.js'
@@ -11,6 +12,7 @@ const routes = {
   '/api/login': forCloudflare('login', login),
   '/api/bot-webhook': forCloudflare('bot-webhook', botWebhook),
   '/api/bot-setup': forCloudflare('bot-setup', botSetup),
+  '/api/admin-login': forCloudflare('admin-login', adminLogin),
   '/api/me': forCloudflare('me', me),
   '/api/shop': forCloudflare('shop', shop),
   '/api/admin': forCloudflare('admin', admin),

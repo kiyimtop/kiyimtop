@@ -1,6 +1,6 @@
 import { botTexts } from './bot-texts.js'
 import { firestoreFromEnv } from './firestore.js'
-import { callTelegram, userFromAuthorization } from './telegram.js'
+import { callTelegram, userFromAuthorization, verifyAdminSession } from './telegram.js'
 
 // Сторона магазина и администратора:
 //   /api/me     — кто я: админ ли, какие магазины мои (и их статус);
@@ -8,8 +8,12 @@ import { callTelegram, userFromAuthorization } from './telegram.js'
 //   /api/admin  — админка: заявки, разрешение/блокировка, подписка, владельцы;
 //   /api/photo  — фото товаров: хранятся в Telegram (бот отправляет их в служебный чат), сайт берёт их отсюда.
 //
-// Кто админ — настройка ADMIN_TELEGRAM_IDS на Cloudflare (номера Telegram через запятую).
-// Куда бот складывает фото — TELEGRAM_STORAGE_CHAT_ID (необязательно; по умолчанию — чат первого админа).
+// Админ на сайте — тот, кто вошёл в /admin по логину и паролю (ADMIN_LOGIN, ADMIN_PASSWORD; см. server/admin-auth.js).
+// Сайт присылает его пропуск в заголовке «Authorization: adm <пропуск>».
+// ADMIN_TELEGRAM_IDS (необязательно) — Telegram ID админа: туда бот присылает заявки магазинов с кнопками
+// «Разрешить / Отклонить», и только эти ID могут нажимать кнопки и команду /admin в боте.
+// Куда бот складывает фото — TELEGRAM_STORAGE_CHAT_ID (необязательно; иначе — чат первого админа из
+// ADMIN_TELEGRAM_IDS, иначе — чат самого продавца с ботом).
 //
 // Магазин: status pending (заявка) → active (админ разрешил) / rejected / blocked.
 // Покупатели видят магазин, только если is_active = true: статус active и подписка не закончилась
@@ -37,9 +41,16 @@ async function context(req) {
   const botToken = req.env.TELEGRAM_BOT_TOKEN
   const db = firestoreFromEnv(req.env)
   if (!botToken || !db) throw fail('not_configured', 503)
-  const user = await userFromAuthorization(req.header('authorization') || '', botToken)
+  const authorization = req.header('authorization') || ''
+  if (authorization.startsWith('adm ')) {
+    const login = await verifyAdminSession(authorization.slice(4), botToken, req.env.ADMIN_PASSWORD)
+    if (!login) throw fail('auth', 401)
+    return { db, botToken, user: { id: 0, name: 'Admin', username: null, language: 'ru' }, admin: true, env: req.env }
+  }
+  const user = await userFromAuthorization(authorization, botToken)
   if (!user) throw fail('auth', 401)
-  return { db, botToken, user, admin: isAdmin(req.env, user.id), env: req.env }
+  // Права админа на сайте — только через вход по паролю; Telegram-аккаунт работает как обычный продавец.
+  return { db, botToken, user, admin: false, env: req.env }
 }
 
 function wrap(handler) {
@@ -350,7 +361,7 @@ export async function photo(req) {
     if (!match) throw fail('bad_request')
     const bytes = Uint8Array.from(atob(match[2]), (c) => c.charCodeAt(0))
     if (bytes.length > 5 * 1024 * 1024) throw fail('too_big')
-    const chatId = req.env.TELEGRAM_STORAGE_CHAT_ID || adminIds(req.env)[0]
+    const chatId = req.env.TELEGRAM_STORAGE_CHAT_ID || adminIds(req.env)[0] || (ctx.user.id > 0 ? ctx.user.id : null)
     if (!chatId) throw fail('not_configured', 503)
     const form = new FormData()
     form.append('chat_id', String(chatId))

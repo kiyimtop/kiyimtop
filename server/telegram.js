@@ -104,6 +104,39 @@ export async function verifySession(session, botToken, now = Date.now()) {
   return { id: data.id, name: data.name ?? null, username: data.username ?? null }
 }
 
+// --- Вход в админку по логину и паролю (сайт) ---
+// Пропуск админа живёт 12 часов. Подпись зависит от пароля: сменили ADMIN_PASSWORD — все старые пропуска
+// админа сразу перестают работать.
+export const ADMIN_SESSION_HOURS = 12
+const adminKey = (botToken, password) => hmac(botToken, `kiyimtop-admin:${password}`)
+
+export async function createAdminSession(login, botToken, password, now = Date.now()) {
+  const payload = toBase64url(encoder.encode(JSON.stringify({ admin: login, exp: Math.floor(now / 1000) + ADMIN_SESSION_HOURS * 3600 })))
+  return `${payload}.${toBase64url(await hmac(await adminKey(botToken, password), payload))}`
+}
+
+// Логин админа или null.
+export async function verifyAdminSession(session, botToken, password, now = Date.now()) {
+  if (!session || !botToken || !password || typeof session !== 'string') return null
+  const [payload, signature, extra] = session.split('.')
+  if (!payload || !signature || extra !== undefined) return null
+  try {
+    if (!(await hmacVerify(await adminKey(botToken, password), payload, fromBase64url(signature)))) return null
+    const data = JSON.parse(new TextDecoder().decode(fromBase64url(payload)))
+    return typeof data?.admin === 'string' && data.exp > now / 1000 ? data.admin : null
+  } catch {
+    return null
+  }
+}
+
+// Сравнить два текста так, чтобы по времени ответа нельзя было угадать пароль по буквам.
+export async function sameText(a, b, botToken) {
+  const [x, y] = await Promise.all([hmac(botToken, `cmp:${a}`), hmac(botToken, `cmp:${b}`)])
+  let diff = 0
+  for (let i = 0; i < x.length; i++) diff |= x[i] ^ y[i]
+  return diff === 0
+}
+
 // Кто пришёл: Mini App («tma …») или вход на сайте («kts …»).
 export async function userFromAuthorization(authorization, botToken) {
   if (!authorization) return null

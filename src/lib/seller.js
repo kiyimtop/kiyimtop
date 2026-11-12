@@ -1,3 +1,4 @@
+import { adminLogout, getAdminSession } from './adminAuth.js'
 import { authHeader, getSiteSession, logout } from './auth.js'
 import { asset } from './base.js'
 import { clearCatalogCache } from './catalog.js'
@@ -8,12 +9,21 @@ import { clearCatalogCache } from './catalog.js'
 // too_big, not_configured, server, network.
 const ERRORS = ['auth', 'forbidden', 'not_found', 'bad_request', 'too_many', 'too_late', 'too_big', 'not_configured', 'server', 'network']
 
+// Режим админа: запросы идут с пропуском админа (вход по паролю), а не с Telegram-входом.
+// Включается в админке и в кабинете магазина, открытом из админки.
+let adminMode = false
+export const setAdminMode = (on) => {
+  adminMode = Boolean(on)
+}
+
 async function call(path, method = 'GET', body) {
+  const asAdmin = path.startsWith('/api/admin') || adminMode
+  const authorization = asAdmin ? `adm ${getAdminSession() ?? ''}` : (authHeader() ?? '')
   let response
   try {
     response = await fetch(asset(path), {
       method,
-      headers: { Authorization: authHeader() ?? '', ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      headers: { Authorization: authorization, ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     })
   } catch {
@@ -23,7 +33,8 @@ async function call(path, method = 'GET', body) {
   if (!response.ok) {
     const reason = data?.error ?? (response.status === 404 && !data ? 'not_configured' : 'server')
     const code = ERRORS.includes(reason) ? reason : 'server'
-    if (code === 'auth' && getSiteSession()) logout()
+    if (code === 'auth' && asAdmin) adminLogout()
+    else if (code === 'auth' && getSiteSession()) logout()
     throw Object.assign(new Error(code), { code })
   }
   return data
