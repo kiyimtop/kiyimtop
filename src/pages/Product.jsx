@@ -3,6 +3,7 @@ import BookingSheet from '../components/BookingSheet.jsx'
 import Icon from '../components/Icon.jsx'
 import ShopInfo from '../components/ShopInfo.jsx'
 import { designFor, itemHTML } from '../components/showcaseArt.js'
+import { addToCart, useCart } from '../lib/cart.js'
 import { fetchProduct } from '../lib/catalog.js'
 import { getChosenPalette } from '../lib/choices.js'
 import { colorHex } from '../lib/colors.js'
@@ -23,6 +24,7 @@ export default function Product({ id, slug }) {
   const [bookingOpen, setBookingOpen] = useState(false) // шторка «Забронировать»
   // Бронь начали на сайте и продолжают в Telegram (?book=1): после брони — сразу «Мои брони».
   const [fromSite, setFromSite] = useState(false)
+  const cart = useCart()
 
   useEffect(() => {
     let cancelled = false
@@ -118,6 +120,8 @@ export default function Product({ id, slug }) {
   const sizes = variantsOfColor.filter((variant) => variant.size).sort((a, b) => compareSizes(a.size, b.size))
   const selected = variantsOfColor.find((variant) => !sizes.length || variant.size === size) ?? null
   const available = selected?.quantity > 0
+  // Сколько штук этого цвета и размера уже в корзине (0 — нет).
+  const inCart = cart.items.find((line) => line.variant_id === selected?.id)?.qty ?? 0
   const selectedColorName = colors.find((v) => v.color_uz === color)?.[`color_${language}`]
 
   function chooseColor(newColor) {
@@ -200,8 +204,20 @@ export default function Product({ id, slug }) {
           {available ? t('product.inStock', { n: selected.quantity }) : t('product.outOfStock')}
         </p>
 
-        {/* На телефоне кнопка всегда видна внизу экрана. */}
+        {/* На телефоне кнопки всегда видны внизу экрана: «В корзину» (собрать несколько вещей,
+            можно из разных магазинов) и «Забронировать» (сразу эту вещь). */}
         <div className="pp-book">
+          {inCart ? (
+            <Link to="/cart" className="cart-add-button in-cart">
+              <Icon name="check" />
+              {t('cart.inCart', { n: inCart })}
+            </Link>
+          ) : (
+            <button type="button" className="cart-add-button" disabled={!available} onClick={() => addToCart(product.id, selected.id, 1)}>
+              <Icon name="cart" />
+              {t('cart.add')}
+            </button>
+          )}
           <button type="button" className="book-button" disabled={!available} onClick={() => setBookingOpen(true)}>
             {t('product.book')}
           </button>
@@ -209,7 +225,7 @@ export default function Product({ id, slug }) {
         <BookingSheet
           open={bookingOpen}
           onClose={() => setBookingOpen(false)}
-          onBooked={fromSite ? (booking) => navigate(`/bookings?new=${booking.id}`) : undefined}
+          onBooked={fromSite ? (booking) => navigate(`/bookings?new=${booking.group_id ?? booking.id}`) : undefined}
           product={product}
           variant={selected}
           colorName={selectedColorName}

@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useAccount } from '../lib/auth.js'
-import { createBooking, HOLD_DAYS } from '../lib/bookings.js'
+import { createBooking, HOLD_DAYS, MAX_ITEMS, MAX_SHOPS } from '../lib/bookings.js'
+import { MAX_LINE_QTY } from '../lib/cart.js'
 import { useI18n } from '../lib/i18n.jsx'
 import { Link } from '../lib/router.jsx'
 import AuthForm from './AuthForm.jsx'
 import Icon from './Icon.jsx'
+import QtyStepper from './QtyStepper.jsx'
 import Sheet from './Sheet.jsx'
 import VerifyEmail from './VerifyEmail.jsx'
 
@@ -16,14 +18,16 @@ export default function BookingSheet({ open, onClose, onBooked, product, variant
   const [step, setStep] = useState('confirm') // confirm → sending → done
   const [error, setError] = useState(null) // код ошибки: sold_out, too_many …
   const [booking, setBooking] = useState(null)
+  const [qty, setQty] = useState(1)
   const account = useAccount()
 
-  // Каждый раз шторка открывается заново, с подтверждения.
+  // Каждый раз шторка открывается заново, с подтверждения и с 1 штуки.
   useEffect(() => {
     if (!open) return
     setStep('confirm')
     setError(null)
     setBooking(null)
+    setQty(1)
   }, [open])
 
   if (account.status !== 'in') {
@@ -47,7 +51,7 @@ export default function BookingSheet({ open, onClose, onBooked, product, variant
     setStep('sending')
     setError(null)
     try {
-      const created = await createBooking(variant.id, product.id)
+      const created = await createBooking(variant.id, product.id, qty)
       if (onBooked) return onBooked(created)
       setBooking(created)
       setStep('done')
@@ -103,7 +107,13 @@ export default function BookingSheet({ open, onClose, onBooked, product, variant
         {(colorName || variant?.size) && (
           <p className="booking-details">{[colorName, variant?.size].filter(Boolean).join(' · ')}</p>
         )}
-        <p className="booking-price">{formatPrice(product.price)}</p>
+        <p className="booking-price">{formatPrice(product.price * qty)}</p>
+        {Math.min(MAX_LINE_QTY, variant?.quantity ?? 1) > 1 && (
+          <div className="booking-qty">
+            <span>{t('cart.qty')}</span>
+            <QtyStepper value={qty} max={Math.min(MAX_LINE_QTY, variant?.quantity ?? 1)} onChange={setQty} disabled={step === 'sending'} />
+          </div>
+        )}
         <p className="booking-shop">
           <Icon name="pin" />
           {product.shop.name}
@@ -112,8 +122,8 @@ export default function BookingSheet({ open, onClose, onBooked, product, variant
       <p className="booking-text">{t('booking.holdNote', { date: formatDateTime(holdUntil) })}</p>
       {error && (
         <div className="booking-error" role="alert">
-          <p>{t(`booking.error.${error}`)}</p>
-          {(error === 'too_many' || error === 'already_booked') && (
+          <p>{t(`booking.error.${error}`, { items: MAX_ITEMS, shops: MAX_SHOPS })}</p>
+          {['too_many', 'already_booked', 'too_many_items', 'too_many_shops'].includes(error) && (
             <Link to="/bookings" className="shop-all-link">
               {t('booking.title')}
             </Link>

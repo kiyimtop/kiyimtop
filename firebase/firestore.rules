@@ -120,8 +120,9 @@ service cloud.firestore {
         && exists(/databases/$(database)/documents/categories/$(d.category_id));
     }
     match /products/{productId} {
-      // Бронь: количество одного варианта меняется ровно на 1 вместе с бронью (hold_ref — её номер):
-      //   take — новая бронь (−1), give — бронь отменена или истекла (+1). Остальное в товаре не меняется.
+      // Бронь: количество одного варианта меняется ровно на qty штук брони вместе с ней (hold_ref — её номер):
+      //   take — новая бронь (−qty), give — бронь отменена или истекла (+qty). Остальное в товаре не меняется.
+      //   У старых броней (до корзины) qty нет — значит 1.
       function stockMove() {
         let a = resource.data.variants;
         let b = request.resource.data.variants;
@@ -135,9 +136,10 @@ service cloud.firestore {
           && after.product_id == productId && after.variant_id == a[i].id
           && ((request.resource.data.hold_op == 'take' && !exists(bookingPath)
                 && after.status == 'new' && after.user_id == uid()
-                && a[i].quantity > 0 && b[i].quantity == a[i].quantity - 1)
+                && a[i].quantity >= after.get('qty', 1) && b[i].quantity == a[i].quantity - after.get('qty', 1))
             || (request.resource.data.hold_op == 'give' && get(bookingPath).data.status in ['new', 'confirmed']
-                && after.status in ['cancelled', 'expired'] && b[i].quantity == a[i].quantity + 1));
+                && after.status in ['cancelled', 'expired']
+                && b[i].quantity == a[i].quantity + get(bookingPath).data.get('qty', 1)));
       }
       allow read: if resource.data.get('is_active', false) == true || signedIn();
       allow create: if isStaff() || (ownsActiveShop(request.resource.data.shop_id) && productOk(request.resource.data));
@@ -153,8 +155,9 @@ service cloud.firestore {
       function isShopOwner() { return signedIn() && uid() in resource.data.get('owner_uids', []); }
       function isOpen() { return resource.data.status in ['new', 'confirmed']; }
       function onlyStatus() { return changed().hasOnly(['status', 'updated_at']) && request.resource.data.updated_at == request.time; }
-      // Новая бронь: только своя, email подтверждён, не заблокирован, срок ~2 дня, цена и владельцы — как в базе,
-      // и в той же операции у товара забрана одна штука (hold_ref = номер этой брони).
+      // Новая бронь (строка): только своя, email подтверждён, не заблокирован, срок ~2 дня, цена и владельцы — как в базе,
+      // 1–5 штук (qty), и в той же операции у товара забрано ровно qty штук (hold_ref = номер этой строки).
+      // Строки одной брони из корзины связаны group_id и общим кодом.
       function newOk() {
         let d = request.resource.data;
         let product = get(/databases/$(database)/documents/products/$(d.product_id)).data;
@@ -162,6 +165,8 @@ service cloud.firestore {
         let shop = get(/databases/$(database)/documents/shops/$(product.shop_id)).data;
         return verified() && notBlocked()
           && d.user_id == uid() && d.status == 'new'
+          && d.get('qty', 1) is int && d.get('qty', 1) >= 1 && d.get('qty', 1) <= 5
+          && (d.get('group_id', null) == null || str(d.group_id, 40))
           && d.created_at == request.time && d.updated_at == request.time
           && d.expires_at > request.time + duration.value(1, 'd')
           && d.expires_at < request.time + duration.value(3, 'd')
@@ -183,6 +188,16 @@ service cloud.firestore {
           && ((resource.data.status == 'new' && request.resource.data.status in ['confirmed', 'unavailable', 'picked_up'])
             || (resource.data.status == 'confirmed' && request.resource.data.status in ['unavailable', 'picked_up'])));
       allow delete: if isStaff();
+    }
+
+    // ---------- Корзина ----------
+    // Своя корзина: только сам человек читает и меняет её. Не больше 30 строк.
+    match /carts/{userId} {
+      allow read, delete: if signedIn() && uid() == userId;
+      allow create, update: if signedIn() && uid() == userId
+        && request.resource.data.keys().hasOnly(['items', 'updated_at'])
+        && request.resource.data.items is list && request.resource.data.items.size() <= 30
+        && request.resource.data.updated_at == request.time;
     }
 
     // ---------- Деньги и журнал ----------

@@ -1,7 +1,7 @@
 import { confirmLink, isAdminUser, LINK_TOKEN, openLink, userByTelegram } from './accounts.js'
-import { botTexts } from './bot-texts.js'
+import { botTexts, shortLine } from './bot-texts.js'
 import { firestoreFromEnv } from './firestore.js'
-import { adminAction, bookingButtons, setBookingStatus } from './seller.js'
+import { adminAction, groupLines, orderButtons, setBookingStatus, setGroupStatus } from './seller.js'
 import { callTelegram, webhookSecret } from './telegram.js'
 
 // Серверная часть KiyimTop — теперь только Telegram-бот (Cloudflare Workers, адреса /api/… — server/worker.js).
@@ -122,21 +122,33 @@ async function onButton(req, db, query, botToken) {
   const account = await userByTelegram(db, from.id)
   const ctx = { db, botToken, user: account ?? {}, admin: isAdminUser(req.env, account), env: req.env }
 
-  // Ответ магазина на бронь: bk:<статус>:<номер брони>. Нажать может владелец этого магазина или админ.
-  if (action === 'bk') {
-    const booking = await db.get('bookings', extra ?? '')
-    const shop = booking && (await db.get('shops', booking.shop_id))
-    if (!booking || !(ctx.admin || (account && shop?.owner_uids?.includes(account.id)))) return answer(t.notAllowed)
+  // Ответ магазина на бронь. Нажать может владелец этого магазина или админ.
+  //   og:<статус>:<номер брони> — вся бронь сразу («Подтвердить всё», «Выдано»);
+  //   bk:<статус>:<номер строки> — одна позиция («❌ Нет: …») и кнопки старых сообщений.
+  if (action === 'bk' || action === 'og') {
+    const lines = action === 'og' ? await groupLines(db, extra ?? '') : [await db.get('bookings', extra ?? '')].filter(Boolean)
+    const shop = lines[0] && (await db.get('shops', lines[0].shop_id))
+    if (!lines.length || !(ctx.admin || (account && shop?.owner_uids?.includes(account.id)))) return answer(t.notAllowed)
+    const base = query.message?.text ?? ''
     try {
-      const updated = await setBookingStatus(ctx, booking.id, token, booking.shop_id)
+      let note
+      if (action === 'og') {
+        await setGroupStatus(ctx, lines[0].group_id ?? lines[0].id, token)
+        note = t.statusLine[token]
+      } else {
+        const updated = await setBookingStatus(ctx, lines[0].id, token, lines[0].shop_id)
+        note = `${t.statusLine[updated.status]}: ${shortLine(updated, t.lang)}`
+      }
       await answer()
-      return edit(`${query.message?.text ?? ''}\n\n${t.statusLine[updated.status]}`, bookingButtons(t, updated.id, updated.status))
+      const fresh = await groupLines(db, lines[0])
+      return edit(`${base}\n\n${note}`, orderButtons(t, fresh))
     } catch (error) {
       if (!error.reason) throw error
-      const fresh = await db.get('bookings', booking.id)
-      const state = fresh && Date.parse(fresh.expires_at) <= Date.now() && ['new', 'confirmed'].includes(fresh.status) ? 'expired' : fresh?.status
+      const fresh = await groupLines(db, lines[0])
+      const open = fresh.filter((l) => ['new', 'confirmed'].includes(l.status) && Date.parse(l.expires_at) > Date.now())
+      const state = open.length ? null : fresh.some((l) => l.status === 'cancelled') ? 'cancelled' : fresh.some((l) => ['new', 'confirmed'].includes(l.status)) ? 'expired' : fresh[0]?.status
       await answer(t.statusLine[state] ?? t.notAllowed)
-      return edit(`${query.message?.text ?? ''}\n\n${t.statusLine[state] ?? ''}`, { inline_keyboard: [] })
+      return edit(state ? `${base}\n\n${t.statusLine[state] ?? ''}` : base, orderButtons(t, fresh))
     }
   }
 

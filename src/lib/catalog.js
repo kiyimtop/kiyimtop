@@ -178,6 +178,20 @@ export async function fetchProduct(id) {
   return { ...product, category: categoryInfo(category), shop: catalog.shopsById.get(product.shop_id), offers }
 }
 
+// Корзина для показа: строки корзины + товар, вариант, магазин и категория из каталога.
+// Строка без товара (скрыт, удалён, магазин закрылся) — missing: true; stock — сколько штук есть сейчас.
+export async function fetchCartView(lines) {
+  const catalog = await loadCatalog()
+  return lines.map((line) => {
+    const product = catalog.products.find((p) => p.id === line.product_id)
+    const variant = product?.variants.find((v) => v.id === line.variant_id)
+    const category = product && catalog.categories.find((c) => c.id === product.category_id)
+    const shop = product && catalog.shopsById.get(product.shop_id)
+    if (!product || !variant || !category || !shop) return { ...line, missing: true }
+    return { ...line, product, variant, category: categoryInfo(category), shop, stock: variant.quantity ?? 0 }
+  })
+}
+
 // Сбросить запомненный каталог (после изменений в кабинете магазина — сразу видно новое).
 export function clearCatalogCache() {
   catalogCache = null

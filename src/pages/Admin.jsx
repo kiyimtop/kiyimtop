@@ -979,7 +979,7 @@ function BookingsSection() {
                 <span className={`booking-status ${state}`}>{t(`seller.bookingStatus.${state}`)}</span>
               </p>
               <p className="cab-text">
-                {[b[`color_${language}`], b.size].filter(Boolean).join(' · ')} · {formatPrice(b.price ?? 0)} · {b.shop?.name ?? '—'}
+                {[b[`color_${language}`], b.size].filter(Boolean).join(' · ')}{(b.qty ?? 1) > 1 && ` × ${b.qty}`} · {formatPrice((b.price ?? 0) * (b.qty ?? 1))} · {b.shop?.name ?? '—'}
               </p>
               <p className="cab-text">
                 {t('booking.code')}: <b className="cab-code">{b.code}</b> · {formatDateTime(b.created_at)}

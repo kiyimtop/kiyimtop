@@ -163,25 +163,47 @@ export async function deleteProduct(shopId, productId) {
   }
 }
 
-// Магазин отвечает на бронь: confirmed (подтвердил), unavailable (нет в наличии), picked_up (выдал).
+// Магазин отвечает на строку брони: confirmed (подтвердил), unavailable (нет в наличии), picked_up (выдал).
 // Из «новой» — любое; из «подтверждённой» — выдан или нет в наличии. Покупателю — сообщение в боте.
+async function changeLine(db, fs, shopId, bookingId, status) {
+  const allowedFrom = status === 'confirmed' ? ['new'] : ACTIVE_BOOKING
+  const ref = fs.doc(db, 'bookings', bookingId)
+  return fs.runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref)
+    const booking = snap.exists() ? plain(snap.data()) : null
+    if (!booking || (shopId && booking.shop_id !== shopId)) throw codeError('not_found')
+    if (!allowedFrom.includes(booking.status) || Date.parse(booking.expires_at) <= Date.now()) throw codeError('too_late')
+    tx.update(ref, { status, updated_at: fs.serverTimestamp() })
+    return { id: bookingId, ...booking, status, updated_at: new Date().toISOString() }
+  })
+}
+
 export async function setBookingStatus(shopId, bookingId, status) {
   me()
   if (!['confirmed', 'unavailable', 'picked_up'].includes(status)) throw codeError('bad_request')
-  const allowedFrom = status === 'confirmed' ? ['new'] : ACTIVE_BOOKING
   const { db, fs } = await fire()
   try {
-    const ref = fs.doc(db, 'bookings', bookingId)
-    const updated = await fs.runTransaction(db, async (tx) => {
-      const snap = await tx.get(ref)
-      const booking = snap.exists() ? plain(snap.data()) : null
-      if (!booking || (shopId && booking.shop_id !== shopId)) throw codeError('not_found')
-      if (!allowedFrom.includes(booking.status) || Date.parse(booking.expires_at) <= Date.now()) throw codeError('too_late')
-      tx.update(ref, { status, updated_at: fs.serverTimestamp() })
-      return { id: bookingId, ...booking, status, updated_at: new Date().toISOString() }
-    })
+    const updated = await changeLine(db, fs, shopId, bookingId, status)
     notify('booking_status', bookingId)
     return updated
+  } catch (error) {
+    throw toCode(error)
+  }
+}
+
+// Ответ на всю бронь сразу: «Подтвердить всё» (новые строки) или «Выдан» (все открытые строки).
+// Строки, которые уже закрыты (нет в наличии, отменены), не трогаем. Покупателю — одно сообщение.
+export async function setGroupStatus(shopId, lines, status) {
+  me()
+  if (!['confirmed', 'picked_up'].includes(status)) throw codeError('bad_request')
+  const from = status === 'confirmed' ? ['new'] : ACTIVE_BOOKING
+  const targets = lines.filter((line) => from.includes(line.status) && Date.parse(line.expires_at) > Date.now())
+  if (!targets.length) throw codeError('too_late')
+  const { db, fs } = await fire()
+  try {
+    for (const line of targets) await changeLine(db, fs, shopId, line.id, status)
+    notify('booking_status', targets[0].id)
+    return { ok: true }
   } catch (error) {
     throw toCode(error)
   }

@@ -1,5 +1,5 @@
 import { adminTelegramIds, fail, telegramIdsOf, verifyIdToken, wrap } from './accounts.js'
-import { botTexts } from './bot-texts.js'
+import { botTexts, shortLine } from './bot-texts.js'
 import { firestoreFromEnv, UserFirestore } from './firestore.js'
 import { callTelegram } from './telegram.js'
 
@@ -19,71 +19,99 @@ const DAY = 24 * 60 * 60 * 1000
 
 export const TRIAL_DAYS = 30 // пробный срок после одобрения заявки
 
-// Магазин отвечает на бронь: confirmed (подтвердил), unavailable (нет в наличии), picked_up (выдал).
-// Из «новой» — любое; из «подтверждённой» — выдан или нет в наличии. Покупателю приходит сообщение в боте.
-// Вызывается из кабинета и из кнопок в боте. shopId — проверка, что бронь этого магазина.
+// Брони из корзины: одна бронь магазина = несколько строк (документов bookings) с общим group_id и кодом.
+// Старые брони (без group_id) — группа из одной строки.
+const ACTIVE = ['new', 'confirmed']
+const isOpenLine = (b, now = Date.now()) => ACTIVE.includes(b.status) && Date.parse(b.expires_at) > now
+
+// Все строки брони, в которую входит эта строка (или все строки группы по её номеру).
+export async function groupLines(db, bookingOrGroupId) {
+  const groupId = typeof bookingOrGroupId === 'string' ? bookingOrGroupId : bookingOrGroupId.group_id
+  if (groupId) {
+    const lines = await db.where('bookings', 'group_id', 'EQUAL', groupId, { limit: 50 })
+    if (lines.length) return lines.sort((a, b) => String(a.product_name_ru ?? '').localeCompare(String(b.product_name_ru ?? '')))
+  }
+  if (typeof bookingOrGroupId !== 'string') return [bookingOrGroupId]
+  const single = await db.get('bookings', bookingOrGroupId)
+  return single ? [single] : []
+}
+
+// Магазин отвечает на строку: confirmed (подтвердил), unavailable (нет в наличии), picked_up (выдал).
+// Из «новой» — любое; из «подтверждённой» — выдан или нет в наличии. Возвращает строку после изменения.
+// Вызывается из кнопок в боте. shopId — проверка, что бронь этого магазина.
 export async function setBookingStatus(ctx, bookingId, status, shopId) {
   const { db } = ctx
   if (!['confirmed', 'unavailable', 'picked_up'].includes(status) || !ID.test(bookingId ?? '')) throw fail('bad_request')
-  const allowedFrom = status === 'confirmed' ? ['new'] : ['new', 'confirmed']
+  const allowedFrom = status === 'confirmed' ? ['new'] : ACTIVE
   const updated = await db.transaction(async (tx) => {
     const booking = await db.get('bookings', bookingId, tx)
     if (!booking || (shopId && booking.shop_id !== shopId)) throw fail('not_found', 404)
     if (!allowedFrom.includes(booking.status) || Date.parse(booking.expires_at) <= Date.now()) throw fail('too_late', 409)
     const now = new Date()
     return {
-      writes: [db.update('bookings', booking.id, { status, updated_at: now })],
+      writes: [db.update('bookings', booking.id, { status, updated_at: now, notified_status: status })],
       result: { ...booking, status, updated_at: now.toISOString() },
     }
   })
-  await notifyBuyer(db, ctx.botToken, updated, status)
+  const lines = await groupLines(db, updated)
+  await notifyBuyer(db, ctx.botToken, [updated], status, lines.some((l) => l.id !== updated.id && isOpenLine(l)))
   return updated
 }
 
-// Покупателю — в его привязанный Telegram (если привязан): магазин подтвердил / нет в наличии / выдан.
-export async function notifyBuyer(db, botToken, booking, status) {
-  const t = botTexts(booking.buyer_lang)
-  const [chatId] = booking.user_id ? await telegramIdsOf(db, [booking.user_id]) : []
+// Ответ на всю бронь из бота: «Подтвердить всё» (новые строки) или «Выдано» (все открытые).
+export async function setGroupStatus(ctx, groupId, status) {
+  const { db } = ctx
+  if (!['confirmed', 'picked_up'].includes(status)) throw fail('bad_request')
+  const from = status === 'confirmed' ? ['new'] : ACTIVE
+  const lines = await groupLines(db, groupId)
+  const targets = lines.filter((l) => from.includes(l.status) && Date.parse(l.expires_at) > Date.now())
+  if (!targets.length) throw fail('too_late', 409)
+  const now = new Date()
+  await db.commit(targets.map((l) => db.update('bookings', l.id, { status, updated_at: now, notified_status: status })))
+  await notifyBuyer(db, ctx.botToken, targets.map((l) => ({ ...l, status })), status, false)
+  return lines.map((l) => (targets.some((x) => x.id === l.id) ? { ...l, status } : l))
+}
+
+// Покупателю — в его привязанный Telegram (если привязан): одно сообщение на изменение брони.
+export async function notifyBuyer(db, botToken, lines, status, othersOpen = false) {
+  if (!lines.length) return
+  const t = botTexts(lines[0].buyer_lang)
+  const [chatId] = lines[0].user_id ? await telegramIdsOf(db, [lines[0].user_id]) : []
   if (!chatId) return
-  await callTelegram(botToken, 'sendMessage', { chat_id: chatId, text: t.buyerStatus(booking, status) }).catch((error) =>
-    console.error('notify buyer:', error.message),
-  )
+  const text = t.buyerUpdate(lines, status, othersOpen)
+  if (!text) return
+  await callTelegram(botToken, 'sendMessage', { chat_id: chatId, text }).catch((error) => console.error('notify buyer:', error.message))
 }
 
 // ---------- Сообщения в бот ----------
 
-// Новая бронь → всем владельцам магазина: что, какой размер, код и кнопки ответа.
-export async function notifyShop(env, db, botToken, booking) {
-  const shop = await db.get('shops', booking.shop_id)
+// Новая бронь → всем владельцам магазина: все позиции, сумма, код и кнопки ответа.
+export async function notifyShop(env, db, botToken, lines) {
+  const shop = await db.get('shops', lines[0].shop_id)
   if (!shop?.owner_uids?.length) return
   const t = botTexts(shop.owner_lang)
   for (const chatId of await telegramIdsOf(db, shop.owner_uids)) {
     await callTelegram(botToken, 'sendMessage', {
       chat_id: chatId,
-      text: t.newBooking(booking),
-      reply_markup: bookingButtons(t, booking.id, 'new'),
+      text: t.newOrder(lines),
+      reply_markup: orderButtons(t, lines),
     }).catch((error) => console.error('notify shop:', error.message))
   }
 }
 
-export function bookingButtons(t, id, status) {
-  if (status === 'new') {
-    return {
-      inline_keyboard: [
-        [{ text: t.btnConfirm, callback_data: `bk:confirmed:${id}` }],
-        [{ text: t.btnUnavailable, callback_data: `bk:unavailable:${id}` }],
-      ],
-    }
-  }
-  if (status === 'confirmed') {
-    return {
-      inline_keyboard: [
-        [{ text: t.btnPickedUp, callback_data: `bk:picked_up:${id}` }],
-        [{ text: t.btnUnavailable, callback_data: `bk:unavailable:${id}` }],
-      ],
-    }
-  }
-  return { inline_keyboard: [] }
+// Кнопки под сообщением о брони (по текущему состоянию строк):
+//   есть новые — «Подтвердить всё»; есть открытые — «Выдано»;
+//   у каждой открытой строки — «❌ Нет: …» (если строк больше одной), иначе общая «❌ Нет в наличии».
+export function orderButtons(t, lines) {
+  const open = lines.filter((l) => isOpenLine(l))
+  if (!open.length) return { inline_keyboard: [] }
+  const groupId = lines[0].group_id ?? lines[0].id
+  const rows = []
+  if (open.some((l) => l.status === 'new')) rows.push([{ text: t.btnConfirmAll, callback_data: `og:confirmed:${groupId}` }])
+  rows.push([{ text: t.btnPickedUpAll, callback_data: `og:picked_up:${groupId}` }])
+  if (lines.length === 1) rows.push([{ text: t.btnUnavailable, callback_data: `bk:unavailable:${open[0].id}` }])
+  else for (const l of open) rows.push([{ text: t.btnLineUnavailable(shortLine(l, t.lang)), callback_data: `bk:unavailable:${l.id}` }])
+  return { inline_keyboard: rows }
 }
 
 export async function notifyAdmins(ctx, shop) {

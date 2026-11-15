@@ -1,7 +1,7 @@
 import { fail, isAdminUser, telegramIdsOf, verifyIdToken, wrap } from './accounts.js'
 import { botTexts } from './bot-texts.js'
 import { firestoreFromEnv } from './firestore.js'
-import { notifyAdmins, notifyBuyer, notifyShop } from './seller.js'
+import { groupLines, notifyAdmins, notifyBuyer, notifyShop } from './seller.js'
 import { callTelegram } from './telegram.js'
 
 // ---------- /api/notify — сообщения в Telegram-бот ----------
@@ -9,7 +9,7 @@ import { callTelegram } from './telegram.js'
 // просит сервер: «напиши в бот про бронь <id>». Сервер ничему не верит на слово: сам читает запись
 // из базы, проверяет, что просит её участник, и пишет только один раз (отметки notified_* в записи).
 //   POST { type, id }:
-//     booking_new       — новая бронь → владельцам магазина (с кнопками);       просит покупатель;
+//     booking_new       — новая бронь (все её строки) → владельцам магазина (с кнопками); просит покупатель;
 //     booking_cancelled — покупатель отменил → владельцам;                       просит покупатель или админ;
 //     booking_status    — магазин ответил → покупателю;                          просит владелец или админ;
 //     shop_applied      — заявка магазина → админам и модераторам (с кнопками);  просит владелец;
@@ -32,40 +32,46 @@ export const notify = wrap(async (req) => {
   const caller = (await db.get('users', claims.uid)) ?? { id: claims.uid }
   const staff = isAdminUser(req.env, caller)
 
+  // Брони: одна бронь магазина = несколько строк (group_id). Сайт присылает номер любой строки,
+  // сервер сам находит всю бронь и пишет одно сообщение про все строки, о которых ещё не писал.
   if (type?.startsWith('booking_')) {
     const booking = await db.get('bookings', id)
     if (!booking) throw fail('not_found', 404)
     const isBuyer = booking.user_id === claims.uid
     const isOwner = (booking.owner_uids ?? []).includes(claims.uid)
+    const lines = await groupLines(db, booking)
 
     if (type === 'booking_new') {
-      if (!isBuyer || booking.notified_new) return json(200, { ok: true })
-      await db.commit([db.update('bookings', id, { notified_new: true })])
-      await notifyShop(req.env, db, botToken, booking)
+      const fresh = lines.filter((l) => l.user_id === booking.user_id && !l.notified_new)
+      if (!isBuyer || !fresh.length) return json(200, { ok: true })
+      await db.commit(fresh.map((l) => db.update('bookings', l.id, { notified_new: true })))
+      await notifyShop(req.env, db, botToken, lines)
       return json(200, { ok: true })
     }
 
     if (type === 'booking_cancelled') {
-      if (!(isBuyer || staff) || booking.status !== 'cancelled' || booking.notified_cancelled) return json(200, { ok: true })
-      await db.commit([db.update('bookings', id, { notified_cancelled: true })])
+      const fresh = lines.filter((l) => l.status === 'cancelled' && !l.notified_cancelled)
+      if (!(isBuyer || staff) || !fresh.length) return json(200, { ok: true })
+      await db.commit(fresh.map((l) => db.update('bookings', l.id, { notified_cancelled: true })))
       const shop = await db.get('shops', booking.shop_id)
       const t = botTexts(shop?.owner_lang)
       for (const chatId of await telegramIdsOf(db, shop?.owner_uids ?? booking.owner_uids)) {
-        await callTelegram(botToken, 'sendMessage', {
-          chat_id: chatId,
-          text: `${t.statusLine.cancelled}\n${booking.product_name_ru ?? booking.product_name_uz} · ${[booking.size, booking.color_ru].filter(Boolean).join(' · ')}\n${booking.code}`,
-        }).catch((error) => console.error('notify cancel:', error.message))
+        await callTelegram(botToken, 'sendMessage', { chat_id: chatId, text: t.shopCancelled(fresh) }).catch((error) =>
+          console.error('notify cancel:', error.message),
+        )
       }
       return json(200, { ok: true })
     }
 
     if (type === 'booking_status') {
-      const status = booking.status
-      if (!(isOwner || staff) || !['confirmed', 'unavailable', 'picked_up'].includes(status) || booking.notified_status === status) {
-        return json(200, { ok: true })
+      const fresh = lines.filter((l) => ['confirmed', 'unavailable', 'picked_up'].includes(l.status) && l.notified_status !== l.status)
+      if (!(isOwner || staff) || !fresh.length) return json(200, { ok: true })
+      await db.commit(fresh.map((l) => db.update('bookings', l.id, { notified_status: l.status })))
+      const othersOpen = lines.some((l) => !fresh.includes(l) && ['new', 'confirmed'].includes(l.status) && Date.parse(l.expires_at) > Date.now())
+      for (const status of ['confirmed', 'unavailable', 'picked_up']) {
+        const part = fresh.filter((l) => l.status === status)
+        if (part.length) await notifyBuyer(db, botToken, part, status, othersOpen)
       }
-      await db.commit([db.update('bookings', id, { notified_status: status })])
-      await notifyBuyer(db, botToken, booking, status)
       return json(200, { ok: true })
     }
   }

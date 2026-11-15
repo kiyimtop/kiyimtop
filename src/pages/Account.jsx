@@ -15,6 +15,7 @@ import {
   updateProfile,
   useAccount,
 } from '../lib/auth.js'
+import { useCart } from '../lib/cart.js'
 import { useI18n } from '../lib/i18n.jsx'
 import { isTelegram, telegramBotLink } from '../lib/platform.js'
 import { Link } from '../lib/router.jsx'
@@ -25,6 +26,7 @@ import { Link } from '../lib/router.jsx'
 export default function Account() {
   const { t } = useI18n()
   const account = useAccount()
+  const cartCount = useCart().count
 
   if (account.status === 'loading') return <p className="page-message">{t('common.loading')}</p>
   if (account.status === 'out') {
@@ -86,6 +88,12 @@ export default function Account() {
             <Icon name="chevron" className="icon menu-link-chevron" />
           </Link>
         )}
+        <Link to="/cart" className="menu-link">
+          <Icon name="cart" />
+          {t('cart.title')}
+          {cartCount > 0 && <span className="cab-badge">{cartCount}</span>}
+          <Icon name="chevron" className="icon menu-link-chevron" />
+        </Link>
         <Link to="/bookings" className="menu-link">
           <Icon name="bag" />
           {t('booking.title')}

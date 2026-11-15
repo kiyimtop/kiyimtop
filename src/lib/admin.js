@@ -395,7 +395,7 @@ export async function fetchAnalytics() {
         total: bookings.length,
         active: activeBookings.length,
         status: bookingStatus,
-        pickedUpValue: bookings.filter((b) => b.status === 'picked_up').reduce((s, b) => s + (b.price ?? 0), 0),
+        pickedUpValue: bookings.filter((b) => b.status === 'picked_up').reduce((s, b) => s + (b.price ?? 0) * (b.qty ?? 1), 0),
       },
       revenue: {
         total: payments.reduce((s, p) => s + (p.amount ?? 0), 0),

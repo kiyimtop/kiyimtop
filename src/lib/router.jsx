@@ -16,6 +16,7 @@ export function appPath(pathname = window.location.pathname) {
 //   /s/<id>       — магазин: адрес, часы и все его товары
 //   /search       — поиск (/search?q=krossovka)
 //   /bookings     — мои брони
+//   /cart         — корзина: вещи из разных магазинов → бронь в каждом магазине со своим кодом
 //   /account      — профиль: вход и регистрация, имя, Telegram, ссылки на кабинет и админку
 //   /my-shop      — кабинет магазина (заявка, товары, брони)
 //   /admin        — админка (заявки магазинов, подписки)
@@ -28,6 +29,7 @@ function parse(pathname) {
   if (shop) return { name: 'shop', id: shop[1], parent: '/' }
   if (/^\/search\/?$/.test(pathname)) return { name: 'search', parent: '/' }
   if (/^\/bookings\/?$/.test(pathname)) return { name: 'bookings', parent: '/' }
+  if (/^\/cart\/?$/.test(pathname)) return { name: 'cart', parent: '/' }
   if (/^\/account\/?$/.test(pathname)) return { name: 'account', parent: '/' }
   if (/^\/my-shop\/?$/.test(pathname)) return { name: 'my-shop', parent: '/' }
   if (/^\/admin\/?$/.test(pathname)) return { name: 'admin', parent: '/account' }

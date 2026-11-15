@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useAccount } from '../lib/auth.js'
+import { useCart } from '../lib/cart.js'
 import { fetchCategories } from '../lib/catalog.js'
 import { getChosenPalette } from '../lib/choices.js'
 import { useI18n } from '../lib/i18n.jsx'
@@ -15,6 +16,7 @@ export default function CategoryMenu() {
   const [open, setOpen] = useState(false)
   const [categories, setCategories] = useState([])
   const account = useAccount()
+  const cartCount = useCart().count
 
   useEffect(() => {
     fetchCategories()
@@ -33,10 +35,18 @@ export default function CategoryMenu() {
         onClick={() => setOpen(true)}
       >
         <Icon name="dots" />
+        {/* На главной круглой кнопки корзины нет (мешала бы витрине) — число вещей в корзине здесь, сама корзина — в меню. */}
+        {cartCount > 0 && <span className="cart-fab-count menu-cart-count">{cartCount}</span>}
       </button>
 
       <Sheet open={open} onClose={() => setOpen(false)} title={t('menu.title')}>
         <div className="menu-links">
+          <Link to="/cart" className="menu-link">
+            <Icon name="cart" />
+            {t('cart.title')}
+            {cartCount > 0 && <span className="cab-badge">{cartCount}</span>}
+            <Icon name="chevron" className="icon menu-link-chevron" />
+          </Link>
           <Link to="/account" className="menu-link">
             <Icon name="user" />
             {account.status === 'in' ? (

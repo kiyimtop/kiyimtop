@@ -192,6 +192,14 @@ export function useAccount() {
 // Текущее состояние без подписки (для функций, не для экранов).
 export const currentAccount = () => state
 
+// Следить за входом и выходом не из экрана (например, корзине — чтобы перенести её в аккаунт).
+export function onAccountChange(listener) {
+  load()
+  listeners.add(listener)
+  listener(state)
+  return () => listeners.delete(listener)
+}
+
 // Заголовок для сервера (фото, сообщения бота) или null (не вошли).
 export async function authHeader() {
   await load()

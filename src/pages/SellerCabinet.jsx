@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import AuthForm from '../components/AuthForm.jsx'
 import Icon from '../components/Icon.jsx'
+import LineItem from '../components/LineItem.jsx'
 import { useAccount } from '../lib/auth.js'
+import { bookingState, groupBookings, qtyOf } from '../lib/bookings.js'
 import { fetchCategories, fetchSearchIndex, photoSrc } from '../lib/catalog.js'
 import { DISTRICTS } from '../lib/filters.js'
 import { useI18n } from '../lib/i18n.jsx'
@@ -13,6 +15,7 @@ import {
   fetchMyShop,
   saveProduct,
   setBookingStatus,
+  setGroupStatus,
   updateShop,
   uploadPhoto,
 } from '../lib/seller.js'
@@ -243,7 +246,7 @@ function ShopCabinet({ id, isAdmin, hint, canSwitch, onSwitch, onApply }) {
     )
   }
 
-  const activeBookings = bookings.filter(isOpenBooking)
+  const activeBookings = groupBookings(bookings).filter((g) => g.active)
   return (
     <section className="cab">
       {header}
@@ -304,22 +307,23 @@ function ShopCabinet({ id, isAdmin, hint, canSwitch, onSwitch, onApply }) {
   )
 }
 
-const isOpenBooking = (b) => ['new', 'confirmed'].includes(b.status) && Date.parse(b.expires_at) > Date.now()
 const totalQuantity = (product) => (product.variants ?? []).reduce((sum, v) => sum + (v.quantity ?? 0), 0)
 
+// Брони магазина: одна карточка на бронь (из корзины — несколько вещей, один код).
+// «Подтвердить всё» / «Выдан» — для всей брони; «Нет в наличии» — у каждой позиции отдельно.
 function BookingsTab({ shopId, bookings, onChanged }) {
-  const { t, language, formatDateTime } = useI18n()
+  const { t, language, formatDateTime, formatPrice } = useI18n()
   const [busy, setBusy] = useState(null)
   const [error, setError] = useState(null)
   const [showAll, setShowAll] = useState(false)
-  const open = bookings.filter(isOpenBooking)
-  const list = showAll ? bookings : open
+  const groups = groupBookings(bookings)
+  const list = showAll ? groups : groups.filter((g) => g.active)
 
-  async function act(booking, status) {
-    setBusy(booking.id)
+  async function act(key, work) {
+    setBusy(key)
     setError(null)
     try {
-      await setBookingStatus(shopId, booking.id, status)
+      await work()
       onChanged()
     } catch (failure) {
       setError(failure.code ?? 'server')
@@ -338,37 +342,80 @@ function BookingsTab({ shopId, bookings, onChanged }) {
         </div>
       )}
       <ul className="cab-list">
-        {list.map((b) => {
-          const state = ['new', 'confirmed'].includes(b.status) && Date.parse(b.expires_at) <= Date.now() ? 'expired' : b.status
+        {list.map((g) => {
+          const openLines = g.lines.filter((l) => ['new', 'confirmed'].includes(bookingState(l)))
+          const count = g.lines.reduce((sum, l) => sum + qtyOf(l), 0)
           return (
-            <li key={b.id} className="cab-card">
+            <li key={g.id} className="cab-card">
               <p className="cab-card-title">
-                <b>{b[`product_name_${language}`] ?? b.product_name_ru}</b>
-                <span className={`booking-status ${state}`}>{t(`seller.bookingStatus.${state}`)}</span>
+                <span>
+                  {t('booking.code')}: <b className="cab-code">{g.code}</b>
+                </span>
+                <span className={`booking-status ${g.state}`}>{t(`seller.bookingStatus.${g.state}`)}</span>
               </p>
-              <p className="cab-text">
-                {[b[`color_${language}`], b.size].filter(Boolean).join(' · ')} · {b.price?.toLocaleString('ru-RU')}
-              </p>
-              <p className="cab-text">
-                {t('booking.code')}: <b className="cab-code">{b.code}</b> · {t('booking.until', { date: formatDateTime(b.expires_at) })}
-              </p>
-              {state === 'new' && (
-                <div className="cab-actions">
-                  <button type="button" className="primary-button" disabled={busy === b.id} onClick={() => act(b, 'confirmed')}>
-                    {t('seller.confirm')}
-                  </button>
-                  <button type="button" className="link-button" disabled={busy === b.id} onClick={() => act(b, 'unavailable')}>
-                    {t('seller.unavailable')}
-                  </button>
-                </div>
+              {(g.buyer_name || g.buyer_phone) && (
+                <p className="cab-text">
+                  {g.buyer_name}
+                  {g.buyer_phone && (
+                    <>
+                      {' · '}
+                      <a href={`tel:${g.buyer_phone}`}>{g.buyer_phone}</a>
+                    </>
+                  )}
+                </p>
               )}
-              {state === 'confirmed' && (
+              <div className="booking-lines">
+                {g.lines.map((line) => {
+                  const lineState = bookingState(line)
+                  const category = line.product?.category
+                  return (
+                    <LineItem
+                      key={line.id}
+                      name={line[`product_name_${language}`] ?? line.product_name_ru}
+                      colorUz={line.color_uz}
+                      colorName={line[`color_${language}`]}
+                      size={line.size}
+                      qty={qtyOf(line)}
+                      price={line.price}
+                      slug={category?.slug}
+                      emoji={category?.emoji}
+                      muted={!['new', 'confirmed', 'picked_up'].includes(lineState)}
+                    >
+                      {lineState !== g.state && (
+                        <span className={`booking-status line-status ${lineState}`}>{t(`seller.bookingStatus.${lineState}`)}</span>
+                      )}
+                      {['new', 'confirmed'].includes(lineState) && (
+                        <button
+                          type="button"
+                          className="link-button cab-danger line-unavailable"
+                          disabled={busy !== null}
+                          onClick={() => act(line.id, () => setBookingStatus(shopId, line.id, 'unavailable'))}
+                        >
+                          ✕ {t('seller.unavailable')}
+                        </button>
+                      )}
+                    </LineItem>
+                  )
+                })}
+              </div>
+              <p className="cab-text">
+                {t('cart.total', { n: count })} <b>{formatPrice(g.total)}</b>
+                {g.active && <> · {t('booking.until', { date: formatDateTime(g.expires_at) })}</>}
+              </p>
+              {openLines.length > 0 && (
                 <div className="cab-actions">
-                  <button type="button" className="primary-button" disabled={busy === b.id} onClick={() => act(b, 'picked_up')}>
+                  {openLines.some((l) => l.status === 'new') && (
+                    <button type="button" className="primary-button" disabled={busy !== null} onClick={() => act(g.id, () => setGroupStatus(shopId, g.lines, 'confirmed'))}>
+                      {t(g.lines.length > 1 ? 'seller.confirmAll' : 'seller.confirm')}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className={openLines.some((l) => l.status === 'new') ? 'secondary-button' : 'primary-button'}
+                    disabled={busy !== null}
+                    onClick={() => act(g.id, () => setGroupStatus(shopId, g.lines, 'picked_up'))}
+                  >
                     {t('seller.pickedUp')}
-                  </button>
-                  <button type="button" className="link-button" disabled={busy === b.id} onClick={() => act(b, 'unavailable')}>
-                    {t('seller.unavailable')}
                   </button>
                 </div>
               )}

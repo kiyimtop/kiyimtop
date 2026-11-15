@@ -74,6 +74,13 @@ const paths = {
       <path d="M3.5 12h17M12 3.5c2.5 2.6 3.7 5.4 3.7 8.5s-1.2 5.9-3.7 8.5c-2.5-2.6-3.7-5.4-3.7-8.5S9.5 6.1 12 3.5z" />
     </>
   ),
+  cart: (
+    <>
+      <path d="M3.5 4.5h2.2l2.1 10.2h10.4l2-7.2H6.6" />
+      <circle cx="9.5" cy="19" r="1.4" />
+      <circle cx="17" cy="19" r="1.4" />
+    </>
+  ),
   dots: (
     <>
       <circle cx="12" cy="5" r="1.6" fill="currentColor" stroke="none" />

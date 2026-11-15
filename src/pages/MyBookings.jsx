@@ -1,16 +1,16 @@
 import { useEffect, useState } from 'react'
 import Icon from '../components/Icon.jsx'
 import ShopInfo from '../components/ShopInfo.jsx'
-import { designFor, itemHTML } from '../components/showcaseArt.js'
 import AuthForm from '../components/AuthForm.jsx'
+import LineItem from '../components/LineItem.jsx'
 import { useAccount } from '../lib/auth.js'
-import { bookingState, cancelBooking, fetchMyBookings, isActive } from '../lib/bookings.js'
-import { colorHex, isLight, tint } from '../lib/colors.js'
+import { bookingState, cancelGroup, fetchMyBookings, groupBookings, qtyOf } from '../lib/bookings.js'
 import { useI18n } from '../lib/i18n.jsx'
 import { Link, replaceSearch } from '../lib/router.jsx'
 
-// «Мои брони» (/bookings): что забронировано, код брони, до какого времени держится,
-// где магазин и как туда позвонить. Действующую бронь можно отменить.
+// «Мои брони» (/bookings): по одной карточке на бронь в магазине (из корзины — несколько вещей,
+// один код). Что забронировано, код, до какого времени держится, где магазин и как туда позвонить.
+// Действующую бронь можно отменить целиком.
 // Не вошли — вход или регистрация; брони привязаны к аккаунту (те же на сайте и в Telegram).
 export default function MyBookings() {
   const { t } = useI18n()
@@ -19,7 +19,7 @@ export default function MyBookings() {
   const [attempt, setAttempt] = useState(0)
   const account = useAccount()
   const loggedIn = account.status === 'in'
-  // Только что забронировали (?new=<номер брони>) — эта бронь сверху с пометкой «Забронировано!».
+  // Только что забронировали (?new=<номер брони или строки>) — эта бронь сверху с пометкой «Забронировано!».
   const [justBooked] = useState(() => new URLSearchParams(window.location.search).get('new'))
   useEffect(() => {
     if (justBooked) replaceSearch('')
@@ -47,13 +47,14 @@ export default function MyBookings() {
     setAttempt((n) => n + 1)
   }
 
-  const markCancelled = (id) =>
-    setBookings((list) => list.map((booking) => (booking.id === id ? { ...booking, status: 'cancelled' } : booking)))
+  const markCancelled = (group) =>
+    setBookings((list) =>
+      list.map((line) => (group.lines.some((l) => l.id === line.id) && ['new', 'confirmed'].includes(bookingState(line)) ? { ...line, status: 'cancelled' } : line)),
+    )
 
-  // Сначала только что сделанная, потом действующие, потом остальные (внутри — новые сверху).
-  const sorted = bookings
-    ? [...bookings].sort((a, b) => (b.id === justBooked) - (a.id === justBooked) || isActive(b) - isActive(a))
-    : []
+  // Брони по магазинам. Сначала только что сделанная, потом действующие, потом остальные (внутри — новые сверху).
+  const isJust = (group) => group.id === justBooked || group.lines.some((l) => l.id === justBooked)
+  const groups = bookings ? groupBookings(bookings).sort((a, b) => isJust(b) - isJust(a)) : []
 
   return (
     <section className="bookings">
@@ -89,52 +90,33 @@ export default function MyBookings() {
       )}
 
       <div className="booking-list">
-        {loggedIn && sorted.map((booking) => (
-          <BookingCard key={booking.id} booking={booking} isNew={booking.id === justBooked} onCancelled={markCancelled} />
+        {loggedIn && groups.map((group) => (
+          <BookingCard key={group.id} group={group} isNew={isJust(group)} onCancelled={markCancelled} />
         ))}
       </div>
     </section>
   )
 }
 
-function BookingCard({ booking, isNew, onCancelled }) {
+function BookingCard({ group, isNew, onCancelled }) {
   const { language, t, formatPrice, formatDateTime } = useI18n()
   const [confirming, setConfirming] = useState(false)
   const [sending, setSending] = useState(false)
   const [error, setError] = useState(null)
-
-  const state = bookingState(booking)
-  const active = isActive(booking)
-  const category = booking.product?.category
-  const name = booking[`product_name_${language}`]
-  const color = booking[`color_${language}`]
-  const hex = colorHex(booking.color_uz)
-  const productLink = booking.product_id && category ? `/c/${category.slug}/p/${booking.product_id}` : null
+  const { state, active } = group
+  const count = group.lines.reduce((sum, l) => sum + qtyOf(l), 0)
 
   async function cancel() {
     setSending(true)
     setError(null)
     try {
-      await cancelBooking(booking.id)
-      onCancelled(booking.id)
+      await cancelGroup(group)
+      onCancelled(group)
     } catch (failure) {
       setError(failure.code ?? 'server')
       setSending(false)
     }
   }
-
-  const item = (
-    <>
-      <div className="product-tile" style={{ background: isLight(hex) ? '#ECEEF2' : tint(hex, 0.82) }} aria-hidden="true">
-        <div dangerouslySetInnerHTML={{ __html: itemHTML(designFor(category?.slug), hex, name, category?.emoji ?? '🛍️') }} />
-      </div>
-      <div className="product-info">
-        <p className="product-name">{name}</p>
-        {(color || booking.size) && <p className="product-note">{[color, booking.size].filter(Boolean).join(' · ')}</p>}
-        <p className="product-price">{formatPrice(booking.price)}</p>
-      </div>
-    </>
-  )
 
   return (
     <article className={['booking', !active && 'inactive', isNew && 'just-booked'].filter(Boolean).join(' ')}>
@@ -142,40 +124,61 @@ function BookingCard({ booking, isNew, onCancelled }) {
         <p className="booking-new" role="status">
           <Icon name="check" />
           <span>
-            <b>{t('booking.done')}</b> {t('booking.showCode', { date: formatDateTime(booking.expires_at) })}
+            <b>{t('booking.done')}</b> {t('booking.showCode', { date: formatDateTime(group.expires_at) })}
           </span>
         </p>
       )}
       <div className="booking-head">
         <span className={`booking-status ${state}`}>{t(`booking.status.${state}`)}</span>
         <span className="booking-code-small">
-          {t('booking.code')}: <b>{booking.code}</b>
+          {t('booking.code')}: <b>{group.code}</b>
         </span>
       </div>
 
-      {productLink ? (
-        <Link to={productLink} className="product-row">
-          {item}
-          <Icon name="chevron" className="icon product-chevron" />
-        </Link>
-      ) : (
-        <div className="product-row">{item}</div>
-      )}
+      <div className="booking-lines">
+        {group.lines.map((line) => {
+          const lineState = bookingState(line)
+          const category = line.product?.category
+          return (
+            <LineItem
+              key={line.id}
+              name={line[`product_name_${language}`] ?? line.product_name_ru}
+              colorUz={line.color_uz}
+              colorName={line[`color_${language}`]}
+              size={line.size}
+              qty={qtyOf(line)}
+              price={line.price}
+              slug={category?.slug}
+              emoji={category?.emoji}
+              link={line.product_id && category ? `/c/${category.slug}/p/${line.product_id}` : null}
+              muted={lineState === 'unavailable' || (lineState !== state && ['cancelled', 'expired'].includes(lineState))}
+            >
+              {/* У позиции свой статус, только если он не такой, как у всей брони (например, «нет в наличии»). */}
+              {lineState !== state && <span className={`booking-status line-status ${lineState}`}>{t(`booking.status.${lineState}`)}</span>}
+            </LineItem>
+          )
+        })}
+        {group.lines.length > 1 && (
+          <p className="cart-subtotal">
+            {t('cart.total', { n: count })} <b>{formatPrice(group.total)}</b>
+          </p>
+        )}
+      </div>
 
       <p className="booking-when">
         <Icon name="clock" />
         {active
-          ? t('booking.until', { date: formatDateTime(booking.expires_at) })
-          : t('booking.created', { date: formatDateTime(booking.created_at) })}
+          ? t('booking.until', { date: formatDateTime(group.expires_at) })
+          : t('booking.created', { date: formatDateTime(group.created_at) })}
       </p>
 
-      {booking.shop && (
+      {group.shop && (
         <div className="booking-shop-info">
-          <Link to={`/s/${booking.shop.id}`} className="shop-title shop-link">
-            {booking.shop.name}
+          <Link to={`/s/${group.shop.id}`} className="shop-title shop-link">
+            {group.shop.name}
             <Icon name="chevron" />
           </Link>
-          {active && <ShopInfo shop={booking.shop} />}
+          {active && <ShopInfo shop={group.shop} />}
         </div>
       )}
 
@@ -186,7 +189,7 @@ function BookingCard({ booking, isNew, onCancelled }) {
       )}
       {active && confirming && (
         <div className="booking-confirm" role="group" aria-label={t('booking.cancelConfirm')}>
-          <p>{t('booking.cancelConfirm')}</p>
+          <p>{t(group.lines.length > 1 ? 'booking.cancelConfirmAll' : 'booking.cancelConfirm')}</p>
           <button type="button" className="booking-cancel danger" disabled={sending} onClick={cancel}>
             {t('booking.cancelYes')}
           </button>

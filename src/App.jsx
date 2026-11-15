@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react'
 import BackButton from './components/BackButton.jsx'
+import CartButton from './components/CartButton.jsx'
 import CategoryMenu from './components/CategoryMenu.jsx'
 import Icon from './components/Icon.jsx'
 import LanguageSwitcher from './components/LanguageSwitcher.jsx'
@@ -10,6 +11,7 @@ import { getStartParam, isTelegram } from './lib/platform.js'
 import { appPath, goBack, Link, openStartPage, useRoute } from './lib/router.jsx'
 import Account from './pages/Account.jsx'
 import Admin from './pages/Admin.jsx'
+import Cart from './pages/Cart.jsx'
 import CategoryShops from './pages/CategoryShops.jsx'
 import Home from './pages/Home.jsx'
 import MyBookings from './pages/MyBookings.jsx'
@@ -42,6 +44,7 @@ export default function App() {
     if (start === 'bookings') openStartPage('/bookings')
     else if (start === 'shop') openStartPage('/my-shop')
     else if (start === 'account') openStartPage('/account')
+    else if (start === 'cart') openStartPage('/cart')
     else if (book) {
       fetchVariant(book[1])
         .then((target) => {
@@ -79,11 +82,16 @@ export default function App() {
         {route.name === 'shop' && <Shop key={route.id} id={route.id} />}
         {route.name === 'search' && <Search />}
         {route.name === 'bookings' && <MyBookings />}
+        {route.name === 'cart' && <Cart />}
         {route.name === 'account' && <Account />}
         {route.name === 'my-shop' && <SellerCabinet />}
         {route.name === 'admin' && <Admin />}
         {route.name === 'home' && <Home />}
       </main>
+
+      {/* Корзина — для покупателя; на товаре у неё своя кнопка, на главной — число на кнопке «⋮»,
+          в кабинете и админке не нужна. */}
+      {!['home', 'cart', 'product', 'my-shop', 'admin'].includes(route.name) && <CartButton />}
 
       {route.name !== 'home' && (
         <footer className="page-footer">{t(isTelegram() ? 'platform.telegram' : 'platform.browser')}</footer>

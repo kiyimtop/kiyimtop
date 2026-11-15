@@ -2182,7 +2182,10 @@ a.sheet-apply {
   box-shadow: 0 8px 24px rgba(31, 35, 64, 0.08);
 }
 
-.booking.inactive {
+/* Закрытая бронь — бледнее, но цвет статуса остаётся ярким. */
+.booking.inactive .booking-lines,
+.booking.inactive .booking-shop-info,
+.booking.inactive .booking-when {
   opacity: 0.72;
 }
 
@@ -2228,15 +2231,33 @@ a.sheet-apply {
   font-weight: 800;
 }
 
-/* Новая — оранжевая (тёмный текст), подтверждённая — зелёная (белый текст). */
+/* Цвет статуса сразу говорит, хорошо это или плохо:
+   новая — оранжевая (ждёт магазина), подтверждена — синяя (всё по плану), забрали — зелёная (успех),
+   нет в наличии — красная (проблема магазина), отменена и истекла — серые (просто закрыта). */
 .booking-status.new {
   background: var(--color-orange);
   color: var(--color-text);
 }
 
 .booking-status.confirmed {
+  background: var(--color-blue);
+  color: var(--color-white);
+}
+
+.booking-status.picked_up {
   background: var(--color-green);
   color: var(--color-white);
+}
+
+.booking-status.unavailable {
+  background: var(--color-error);
+  color: var(--color-white);
+}
+
+.booking-status.cancelled,
+.booking-status.expired {
+  background: #E4E1DA;
+  color: var(--color-text-muted);
 }
 
 .booking-code-small {
@@ -3715,4 +3736,342 @@ a.sheet-apply {
 
 .adm button.cab-stat {
   cursor: pointer;
+}
+
+/* ---------- Корзина ---------- */
+/* Внизу товара две кнопки: «В корзину» (белая) и «Забронировать» (оранжевая). */
+.pp-book {
+  display: flex;
+  gap: 10px;
+}
+
+.pp-book .book-button {
+  flex: 1.3;
+}
+
+.cart-add-button {
+  flex: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 56px;
+  padding: 0 14px;
+  border: 2px solid var(--color-blue);
+  border-radius: 999px;
+  background: var(--color-white);
+  color: var(--color-blue);
+  font: inherit;
+  font-size: 16px;
+  font-weight: 800;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.cart-add-button .icon {
+  flex: none;
+  width: 20px;
+  height: 20px;
+}
+
+.cart-add-button.in-cart {
+  border-color: var(--color-green);
+  color: var(--color-green);
+}
+
+.cart-add-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cart-add-button:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 2px;
+}
+
+/* Круглая кнопка корзины справа внизу (видна, когда в корзине что-то есть). */
+.cart-fab {
+  position: fixed;
+  right: calc(16px + env(safe-area-inset-right));
+  bottom: calc(16px + env(safe-area-inset-bottom));
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  width: 58px;
+  height: 58px;
+  border-radius: 50%;
+  background: var(--color-blue);
+  color: var(--color-white);
+  box-shadow: 0 8px 22px rgba(74, 91, 214, 0.4);
+}
+
+.cart-fab .icon {
+  width: 26px;
+  height: 26px;
+}
+
+.cart-fab-count {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  border: 2px solid var(--color-white);
+  border-radius: 12px;
+  background: var(--color-orange);
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 20px;
+  text-align: center;
+}
+
+.cart-fab:focus-visible {
+  outline: 3px solid var(--color-orange);
+  outline-offset: 3px;
+}
+
+/* Строка товара в корзине и бронях. */
+.line-item {
+  display: flex;
+  gap: 12px;
+  padding: 10px 0;
+}
+
+.line-item + .line-item {
+  border-top: 1px solid #EEE9DD;
+}
+
+.line-item.muted .line-tile,
+.line-item.muted .line-name,
+.line-item.muted .line-price {
+  opacity: 0.5;
+}
+
+.line-tile {
+  flex: none;
+  width: 72px;
+  height: 72px;
+  border-radius: 16px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+
+.line-tile img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.line-tile > div {
+  width: 100%;
+  height: 100%;
+}
+
+.line-tile svg {
+  width: 100%;
+  height: 100%;
+}
+
+.line-info {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.line-name {
+  color: var(--color-text);
+  font-size: 15px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+a.line-name:hover {
+  text-decoration: underline;
+}
+
+.line-details {
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
+.line-price {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.line-price small {
+  font-weight: 500;
+  color: var(--color-text-muted);
+}
+
+.line-note {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-error);
+}
+
+.line-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 16px;
+  margin-top: 6px;
+}
+
+.line-status {
+  margin-top: 4px;
+  padding: 3px 8px;
+  font-size: 11px;
+}
+
+/* «Нет в наличии» у одной позиции — маленькая кнопка с рамкой, чтобы не путать со статусом. */
+.line-unavailable {
+  margin-top: 6px;
+  padding: 5px 12px;
+  border: 1.5px solid #F2C9C5;
+  border-radius: 999px;
+  font-size: 13px;
+}
+
+/* «− 2 +» */
+.qty-stepper {
+  display: inline-flex;
+  align-items: center;
+  border: 1.5px solid #DDD6C6;
+  border-radius: 999px;
+  background: var(--color-white);
+}
+
+.qty-stepper button {
+  width: 38px;
+  height: 36px;
+  border: 0;
+  background: none;
+  color: var(--color-blue);
+  font: inherit;
+  font-size: 20px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.qty-stepper button:disabled {
+  color: #C9C3B5;
+  cursor: default;
+}
+
+.qty-stepper span {
+  min-width: 22px;
+  text-align: center;
+  font-weight: 800;
+}
+
+.booking-qty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 6px 0 2px;
+  font-weight: 700;
+}
+
+.cart .shop-title {
+  margin-bottom: 4px;
+}
+
+.cart-subtotal {
+  margin: 4px 0 0;
+  text-align: right;
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+.cart-subtotal b {
+  color: var(--color-text);
+}
+
+.cart-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border-radius: 20px;
+  background: var(--color-white);
+  box-shadow: 0 8px 24px rgba(31, 35, 64, 0.08);
+}
+
+.cart-total {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0;
+  font-size: 16px;
+}
+
+.cart-total b {
+  font-size: 22px;
+}
+
+.cart-summary .bookings-login {
+  max-width: none;
+  margin: 0;
+  padding: 0;
+  box-shadow: none;
+}
+
+.cart-done {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.cart-code {
+  font-size: 14px;
+  color: var(--color-text-muted);
+  white-space: nowrap;
+}
+
+.cart-code b {
+  color: var(--color-text);
+  font-family: var(--font-display);
+  font-size: 22px;
+  letter-spacing: 0.08em;
+}
+
+.cart-order-lines {
+  margin: 4px 0 0;
+  padding-left: 18px;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.booking-lines {
+  margin: 4px 0 8px;
+}
+
+.cab-card .booking-lines .line-item:first-child {
+  padding-top: 4px;
+}
+
+.menu-link .cab-badge {
+  margin-left: 4px;
+}
+
+/* Число вещей в корзине на кнопке «⋮» (главная). */
+.menu-button {
+  position: relative;
+}
+
+.menu-cart-count {
+  top: -6px;
+  right: -6px;
+  min-width: 22px;
+  height: 22px;
+  line-height: 18px;
 }
