@@ -21,7 +21,8 @@
 - Сайт и сервер — **Cloudflare Workers** (`kiyimtop.kiyimtop.workers.dev`), собирается сам после каждого изменения на GitHub.
 - База и вход (Google / email) — **Firebase**. Как в TheStarth: сайт сам работает с базой, доступ решают
   правила `firebase/firestore.rules` (брони, кабинет магазина, админ-панель, роли, аналитика).
-- Настройки Cloudflare: при сборке (Build variables) — `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_API_KEY`;
+- Настройки Cloudflare: при сборке (Build variables) — `VITE_FIREBASE_PROJECT_ID`, `VITE_FIREBASE_API_KEY`
+  (и для невидимой капчи App Check — `VITE_FIREBASE_APP_ID`, `VITE_RECAPTCHA_ENTERPRISE_KEY`, см. CLAUDE.md, раздел 8г);
   секреты (Variables and Secrets, необязательные — для бота и фото) — `TELEGRAM_BOT_TOKEN`,
   `TELEGRAM_STORAGE_CHAT_ID`, `FIREBASE_SERVICE_ACCOUNT`.
 - Первый админ: зарегистрироваться на сайте → Firebase → Firestore → `users` → свой документ → `role` = `admin`.

@@ -517,5 +517,7 @@
   "booking.cancelConfirmAll": "Bu do‘kondagi butun bron bekor qilinsinmi?",
   "seller.confirmAll": "Hammasini tasdiqlash",
   "booking.error.too_many_today": "Bir sutkada 20 tadan ko‘p narsani bron qilib bo‘lmaydi. Ertaga urinib ko‘ring.",
-  "seller.error.not_verified": "Avval emailni tasdiqlang: profilni oching va xatdagi havola orqali o‘ting. So‘ng arizani qayta yuboring."
+  "seller.error.not_verified": "Avval emailni tasdiqlang: profilni oching va xatdagi havola orqali o‘ting. So‘ng arizani qayta yuboring.",
+  "common.crash": "Nimadir xato ketdi. Sahifani yangilang — odatda bu yordam beradi.",
+  "common.reload": "Sahifani yangilash"
 }

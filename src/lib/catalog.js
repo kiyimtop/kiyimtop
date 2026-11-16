@@ -13,6 +13,91 @@ import { compareSizes } from './sizes.js'
 // а нужное (категорию, магазин, товар) выбираем на телефоне. Когда товаров станут тысячи —
 // перейти на запросы по частям.
 
+// ---------- Проверка данных из базы ----------
+// Правила базы не умеют проверить каждое поле магазина и товара, поэтому продавец (или ошибка в данных)
+// может записать не тот тип: число вместо текста, текст вместо списка. Чтобы от одной такой записи
+// не падала страница у всех покупателей, всё из базы приводится к ожидаемому виду, а совсем
+// испорченные товары в каталог не попадают.
+const text = (value, max = 500) => (typeof value === 'string' && value.trim() ? value.slice(0, max) : null)
+const number = (value) => (typeof value === 'number' && Number.isFinite(value) ? value : null)
+const TIME = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/
+const PHOTO = /^(\/api\/photo\?id=[A-Za-z0-9_-]{10,200}|https:\/\/[^\s"'<>]{1,500})$/
+
+export function safeCategory(category) {
+  const id = String(category.id)
+  return {
+    ...category,
+    id,
+    slug: text(category.slug, 60) ?? id,
+    name_uz: text(category.name_uz, 80) ?? text(category.name_ru, 80) ?? id,
+    name_ru: text(category.name_ru, 80) ?? text(category.name_uz, 80) ?? id,
+    emoji: text(category.emoji, 16),
+    sort_order: number(category.sort_order) ?? 0,
+  }
+}
+
+export function safeShop(shop) {
+  const time = (value) => (typeof value === 'string' && TIME.test(value) ? value : null)
+  const telegram = text(shop.telegram_username, 40)
+  return {
+    ...shop,
+    id: String(shop.id),
+    name: text(shop.name, 80) ?? '—',
+    description_uz: text(shop.description_uz, 500),
+    description_ru: text(shop.description_ru, 500),
+    address_uz: text(shop.address_uz, 200),
+    address_ru: text(shop.address_ru, 200),
+    landmark_uz: text(shop.landmark_uz, 200),
+    landmark_ru: text(shop.landmark_ru, 200),
+    district: text(shop.district, 40),
+    latitude: number(shop.latitude),
+    longitude: number(shop.longitude),
+    phone: text(shop.phone, 30),
+    telegram_username: telegram && /^[A-Za-z0-9_]+$/.test(telegram) ? telegram : null,
+    opens_at: time(shop.opens_at),
+    closes_at: time(shop.closes_at),
+    owner_uids: Array.isArray(shop.owner_uids) ? shop.owner_uids.filter((uid) => typeof uid === 'string') : [],
+    subscription_until: typeof shop.subscription_until === 'string' ? shop.subscription_until : null,
+  }
+}
+
+// strict — для каталога покупателей: товар без названия, цены, магазина или вариантов не показываем (null).
+// Без strict (админка) — товар остаётся в списке, чтобы его можно было найти и удалить.
+export function safeProduct(product, { strict = true } = {}) {
+  const nameUz = text(product.name_uz, 120)
+  const nameRu = text(product.name_ru, 120)
+  const price = number(product.price)
+  const variants = (Array.isArray(product.variants) ? product.variants : [])
+    .filter((v) => v && typeof v === 'object' && typeof v.id === 'string' && v.id)
+    .slice(0, 80)
+    .map((v) => ({
+      id: v.id,
+      size: text(v.size, 20),
+      color_uz: text(v.color_uz, 40),
+      color_ru: text(v.color_ru, 40) ?? text(v.color_uz, 40),
+      quantity: Number.isInteger(v.quantity) && v.quantity > 0 ? v.quantity : 0,
+    }))
+  const broken = typeof product.shop_id !== 'string' || typeof product.category_id !== 'string' || (!nameUz && !nameRu) || price === null || price < 0 || !variants.length
+  if (broken && strict) return null
+  return {
+    ...product,
+    id: String(product.id),
+    shop_id: typeof product.shop_id === 'string' ? product.shop_id : '',
+    category_id: typeof product.category_id === 'string' ? product.category_id : '',
+    model_id: text(product.model_id, 100),
+    name_uz: nameUz ?? nameRu ?? '—',
+    name_ru: nameRu ?? nameUz ?? '—',
+    description_uz: text(product.description_uz, 1000),
+    description_ru: text(product.description_ru, 1000),
+    brand: text(product.brand, 60),
+    gender: text(product.gender, 20),
+    price: price !== null && price >= 0 ? price : 0,
+    is_active: product.is_active === true,
+    photo_urls: (Array.isArray(product.photo_urls) ? product.photo_urls : []).filter((url) => typeof url === 'string' && PHOTO.test(url)).slice(0, 8),
+    variants,
+  }
+}
+
 const CACHE_MS = 2 * 60 * 1000
 let catalogCache = null
 let catalogLoading = null
@@ -24,10 +109,11 @@ async function loadCatalog() {
     readCollection('shops', 'is_active', true),
     readCollection('products', 'is_active', true),
   ])
-    .then(([categories, allShops, products]) => {
-      categories.sort((a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0))
+    .then(([rawCategories, rawShops, rawProducts]) => {
+      const categories = rawCategories.map(safeCategory).sort((a, b) => a.sort_order - b.sort_order)
+      const products = rawProducts.map((product) => safeProduct(product)).filter(Boolean)
       // Подписка закончилась — магазин не показываем (сервер тоже скрывает его, это на всякий случай).
-      const shops = allShops.filter((shop) => !shop.subscription_until || Date.parse(shop.subscription_until) > Date.now())
+      const shops = rawShops.map(safeShop).filter((shop) => !shop.subscription_until || Date.parse(shop.subscription_until) > Date.now())
       const shopsById = new Map(shops.map((shop) => [shop.id, shop]))
       const data = {
         categories,
@@ -36,7 +122,7 @@ async function loadCatalog() {
         // Товары скрытого магазина не показываем. Сначала дешёвые.
         products: products
           .filter((product) => shopsById.has(product.shop_id))
-          .map((product) => ({ ...product, variants: product.variants ?? [], photo_urls: (product.photo_urls ?? []).map(photoSrc) }))
+          .map((product) => ({ ...product, photo_urls: product.photo_urls.map(photoSrc) }))
           .sort((a, b) => a.price - b.price),
       }
       catalogCache = { at: Date.now(), data }

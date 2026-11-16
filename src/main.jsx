@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App.jsx'
+import ErrorBoundary from './components/ErrorBoundary.jsx'
 import { I18nProvider } from './lib/i18n.jsx'
 import { initAuth } from './lib/auth.js'
 import { asset } from './lib/base.js'
@@ -21,7 +22,9 @@ if (import.meta.env.PROD && 'serviceWorker' in navigator && !isTelegram()) {
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <I18nProvider>
-      <App />
+      <ErrorBoundary>
+        <App />
+      </ErrorBoundary>
     </I18nProvider>
   </StrictMode>,
 )

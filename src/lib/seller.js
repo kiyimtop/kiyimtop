@@ -3,6 +3,7 @@ import { asset } from './base.js'
 import { releaseExpired } from './bookings.js'
 import { clearCatalogCache, fetchCategories } from './catalog.js'
 import { codeError, fire, plain, toCode } from './db.js'
+import { appCheckToken } from './fb.js'
 import { notify } from './notify.js'
 
 // Кабинет магазина — прямо в базе Firestore (как в TheStarth). Кто что может менять, решают правила
@@ -244,11 +245,13 @@ export async function uploadPhoto(file) {
   canvas.getContext('2d').drawImage(image, 0, 0, canvas.width, canvas.height)
   const dataUrl = canvas.toDataURL('image/jpeg', 0.85)
   const authorization = await authHeader()
+  // Сервер проверяет права «от имени человека» прямо в базе — ему нужен и пропуск App Check (если он настроен).
+  const appCheck = await appCheckToken(8000)
   let response
   try {
     response = await fetch(asset('/api/photo'), {
       method: 'POST',
-      headers: { Authorization: authorization ?? '', 'Content-Type': 'application/json' },
+      headers: { Authorization: authorization ?? '', 'Content-Type': 'application/json', ...(appCheck ? { 'X-Firebase-AppCheck': appCheck } : {}) },
       body: JSON.stringify({ image: dataUrl }),
     })
   } catch {

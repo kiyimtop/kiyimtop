@@ -1,6 +1,6 @@
 import { currentAccount } from './auth.js'
 import { releaseExpired, releaseOne } from './bookings.js'
-import { clearCatalogCache } from './catalog.js'
+import { clearCatalogCache, safeProduct, safeShop } from './catalog.js'
 import { codeError, fire, plain, toCode } from './db.js'
 import { notify } from './notify.js'
 import { shopOut, statusOf, syncSubscriptions } from './seller.js'
@@ -52,7 +52,9 @@ async function log(action, target, details = {}) {
 export async function fetchAdminShops() {
   staff()
   return run(async (db, fs) => {
-    const [shops, products, users] = await Promise.all([all(fs, db, 'shops'), all(fs, db, 'products'), all(fs, db, 'users')])
+    const [rawShops, products, users] = await Promise.all([all(fs, db, 'shops'), all(fs, db, 'products'), all(fs, db, 'users')])
+    // Испорченная запись (не тот тип поля) не должна ронять админку — иначе её отсюда не исправить.
+    const shops = rawShops.map(safeShop)
     await syncSubscriptions(shops)
     const counts = new Map()
     for (const p of products) counts.set(p.shop_id, (counts.get(p.shop_id) ?? 0) + 1)
@@ -247,8 +249,9 @@ export async function fetchAllProducts() {
   staff()
   return run(async (db, fs) => {
     const [products, shops] = await Promise.all([all(fs, db, 'products'), all(fs, db, 'shops')])
-    const names = new Map(shops.map((s) => [s.id, s.name]))
+    const names = new Map(shops.map((s) => [s.id, typeof s.name === 'string' ? s.name : '—']))
     return products
+      .map((p) => safeProduct(p, { strict: false }))
       .map((p) => ({ ...p, shop_name: names.get(p.shop_id) ?? '—' }))
       .sort((a, b) => String(a.name_ru ?? '').localeCompare(String(b.name_ru ?? '')))
   })

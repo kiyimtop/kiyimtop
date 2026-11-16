@@ -18,9 +18,17 @@ async function safely(name, handler, req) {
 }
 
 // server/worker.js: '/api/notify': forCloudflare('notify', notify)
+// Самый большой запрос — фото товара (до 5 МБ, в JSON это до ~7 МБ). Больше не читаем вообще.
+const MAX_BODY = 8 * 1024 * 1024
+const tooBig = () =>
+  new Response(JSON.stringify({ error: 'too_big' }), { status: 413, headers: { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } })
+
 export function forCloudflare(name, handler) {
   return async ({ request, env }) => {
-    const text = ['POST', 'PUT', 'PATCH'].includes(request.method) ? await request.text() : ''
+    const hasBody = ['POST', 'PUT', 'PATCH'].includes(request.method)
+    if (hasBody && Number(request.headers.get('content-length') ?? 0) > MAX_BODY) return tooBig()
+    const text = hasBody ? await request.text() : ''
+    if (text.length > MAX_BODY) return tooBig()
     const result = await safely(name, handler, {
       method: request.method,
       url: new URL(request.url),
@@ -30,7 +38,7 @@ export function forCloudflare(name, handler) {
     })
     const { body, type, response } = toResponseParts(result)
     if (response) return response
-    return new Response(body, { status: result.status, headers: { 'Content-Type': type, 'Cache-Control': 'no-store' } })
+    return new Response(body, { status: result.status, headers: { 'Content-Type': type, 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff' } })
   }
 }
 

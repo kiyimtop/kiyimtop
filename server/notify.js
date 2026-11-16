@@ -39,7 +39,7 @@ export const notify = wrap(async (req) => {
     if (!booking) throw fail('not_found', 404)
     const isBuyer = booking.user_id === claims.uid
     const isOwner = (booking.owner_uids ?? []).includes(claims.uid)
-    const lines = await groupLines(db, booking)
+    const lines = await groupLines(db, booking) // только строки того же магазина и покупателя
 
     if (type === 'booking_new') {
       const fresh = lines.filter((l) => l.user_id === booking.user_id && !l.notified_new)

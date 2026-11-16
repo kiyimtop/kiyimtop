@@ -13,6 +13,9 @@ import { verifyInitData } from './telegram.js'
 //
 // Админ — аккаунт с role = 'admin' (выдаётся в админке) или с email из ADMIN_EMAILS
 // (настройка на Cloudflare, Text: «главные» админы через запятую — их нельзя снять из админки).
+// Почта для ADMIN_EMAILS берётся только из поля verified_email: его пишет сам сервер, когда видит
+// во входе Firebase (подпись Google) подтверждённый email. Полю email_verified верить нельзя —
+// его человек может поменять сам.
 //
 // Telegram привязывается только через бота (ссылка t.me/KiyimTopBot?start=link_…), а в Mini App —
 // по подписи Telegram. Ввести чужой ID или @username вручную нельзя: бот пишет только тем,
@@ -103,15 +106,16 @@ export const adminEmails = (env) =>
     .map((e) => e.trim().toLowerCase())
     .filter((e) => e.includes('@'))
 
-// «Главный» админ (из ADMIN_EMAILS) — только с подтверждённым email, иначе любой мог бы зарегистрироваться с чужой почтой.
-export const isOwnerAdmin = (env, user) => Boolean(user?.email && user.email_verified && adminEmails(env).includes(user.email))
+// «Главный» админ (из ADMIN_EMAILS) — только с почтой, которую подтвердил сервер (verified_email),
+// иначе любой мог бы зарегистрироваться с чужой почтой и вписать себе «email подтверждён».
+export const isOwnerAdmin = (env, user) => Boolean(user?.verified_email && adminEmails(env).includes(user.verified_email))
 // Модератор в боте может то же, что и в админке: отвечать на заявки магазинов.
 export const isAdminUser = (env, user) => Boolean(user && (['admin', 'moderator'].includes(user.role) || isOwnerAdmin(env, user)))
 
 // Все админы, у которых привязан Telegram (кому бот шлёт заявки магазинов).
 export async function adminTelegramIds(db, env) {
   const byRole = [...(await db.where('users', 'role', 'EQUAL', 'admin')), ...(await db.where('users', 'role', 'EQUAL', 'moderator'))]
-  const byEmail = (await Promise.all(adminEmails(env).map((email) => db.where('users', 'email', 'EQUAL', email)))).flat()
+  const byEmail = (await Promise.all(adminEmails(env).map((email) => db.where('users', 'verified_email', 'EQUAL', email)))).flat()
   const ids = [...byRole, ...byEmail.filter((u) => isOwnerAdmin(env, u))].map((u) => u.telegram_id).filter(Number.isSafeInteger)
   return [...new Set(ids)]
 }
@@ -135,6 +139,8 @@ export async function telegramIdsOf(db, uids = []) {
 async function loadUser(db, claims) {
   const existing = await db.get('users', claims.uid)
   const fromToken = claims.provider === 'custom' ? {} : { email: claims.email, email_verified: claims.emailVerified }
+  // Почта, подтверждённая по подписи Google (а не со слов человека) — для ADMIN_EMAILS.
+  if (claims.provider !== 'custom' && claims.emailVerified && claims.email) fromToken.verified_email = claims.email
   if (!existing) {
     const user = {
       email: claims.email,

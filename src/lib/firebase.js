@@ -4,6 +4,8 @@
 // Если настроек нет, isConfigured = false, и сайт покажет понятное сообщение вместо поломки.
 // Какие данные можно читать, решают правила доступа в Firebase (файл firebase/firestore.rules).
 
+import { appCheckConfigured, appCheckToken } from './fb.js'
+
 const projectId = import.meta.env.VITE_FIREBASE_PROJECT_ID
 const apiKey = import.meta.env.VITE_FIREBASE_API_KEY
 
@@ -12,13 +14,34 @@ export const isConfigured = Boolean(projectId)
 const BASE = `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`
 const withKey = (url) => (apiKey ? `${url}${url.includes('?') ? '&' : '?'}key=${encodeURIComponent(apiKey)}` : url)
 
-async function request(path, body) {
-  if (!isConfigured) throw new Error('Firebase не настроен: нет VITE_FIREBASE_PROJECT_ID')
-  const response = await fetch(withKey(`${BASE}${path}`), {
+// token — пропуск App Check («запрос с настоящего сайта», см. lib/fb.js); без него — обычный запрос.
+function send(path, body, token) {
+  const headers = { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(token ? { 'X-Firebase-AppCheck': token } : {}) }
+  return fetch(withKey(`${BASE}${path}`), {
     method: body ? 'POST' : 'GET',
-    headers: body ? { 'Content-Type': 'application/json' } : undefined,
+    headers: Object.keys(headers).length ? headers : undefined,
     body: body ? JSON.stringify(body) : undefined,
   })
+}
+
+async function request(path, body) {
+  if (!isConfigured) throw new Error('Firebase не настроен: нет VITE_FIREBASE_PROJECT_ID')
+  // Если App Check настроен — недолго ждём пропуск (после первого раза он запомнен и приходит сразу).
+  let token = await appCheckToken(2500)
+  let response
+  try {
+    response = await send(path, body, token)
+  } catch (error) {
+    // Запрос с пропуском не ушёл совсем — пробуем без него (пока проверка в Firebase не обязательная, этого хватит).
+    if (!token) throw error
+    token = null
+    response = await send(path, body, null)
+  }
+  // База отказала, а пропуска не было (не успел) — дожидаемся его и повторяем один раз.
+  if (!token && appCheckConfigured && (response.status === 401 || response.status === 403)) {
+    token = await appCheckToken(15000)
+    if (token) response = await send(path, body, token)
+  }
   const data = await response.json().catch(() => null)
   if (!response.ok) {
     const error = new Error(data?.error?.message ?? `Firestore ${response.status}`)

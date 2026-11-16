@@ -31,11 +31,13 @@ export function toBase64url(bytes) {
 // --- 1. Mini App в Telegram ---
 // Mini App получает от Telegram строку initData с подписью токеном бота — подделать нельзя.
 // Как проверять — описано Telegram: https://core.telegram.org/bots/webapps#validating-data-received-via-the-mini-app
-const MINI_APP_MAX_AGE_SECONDS = 7 * 24 * 60 * 60 // вход действует неделю с открытия Mini App
+// Подпись действует сутки с открытия Mini App (раньше — неделю): перехваченная строка initData
+// быстро становится бесполезной. Telegram выдаёт новую подпись при каждом открытии Mini App.
+const MINI_APP_MAX_AGE_SECONDS = 24 * 60 * 60
 
 // { id, name, username } или null, если подпись неверная или устарела.
 export async function verifyInitData(initData, botToken, now = Date.now()) {
-  if (!initData || !botToken) return null
+  if (typeof initData !== 'string' || !initData || initData.length > 8192 || !botToken) return null
   const params = new URLSearchParams(initData)
   const hash = params.get('hash')
   if (!hash || !/^[0-9a-f]{64}$/.test(hash)) return null

@@ -60,7 +60,7 @@ export class Firestore {
   async request(path, { method = 'POST', body, query = '' } = {}) {
     const response = await this.fetch(`${this.base}${path}${query}`, {
       method,
-      headers: { Authorization: `Bearer ${await this.token()}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
+      headers: { Authorization: `Bearer ${await this.token()}`, ...(this.extraHeaders ?? {}), ...(body ? { 'Content-Type': 'application/json' } : {}) },
       body: body ? JSON.stringify(body) : undefined,
     })
     const data = await response.json().catch(() => null)
@@ -149,10 +149,13 @@ export class Firestore {
 // База «от имени человека»: вместо ключа сервисного аккаунта — его вход Firebase (ID-токен).
 // Тогда действуют правила firebase/firestore.rules — сервер видит ровно то, что видит сам человек.
 // Нужно для фото: проверить, что загружает владелец одобренного магазина, без секретного ключа.
+// appCheckToken — пропуск App Check с сайта («запрос пришёл с нашего сайта»): когда в Firebase включена
+// обязательная проверка App Check, без него база не ответит на запрос от имени человека.
 export class UserFirestore extends Firestore {
-  constructor(projectId, idToken, fetchImpl) {
+  constructor(projectId, idToken, fetchImpl, appCheckToken) {
     super({ client_email: 'user' }, projectId, fetchImpl)
     this.idToken = idToken
+    if (appCheckToken) this.extraHeaders = { 'X-Firebase-AppCheck': appCheckToken }
   }
 
   async token() {

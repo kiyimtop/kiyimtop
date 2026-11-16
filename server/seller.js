@@ -25,10 +25,14 @@ const ACTIVE = ['new', 'confirmed']
 const isOpenLine = (b, now = Date.now()) => ACTIVE.includes(b.status) && Date.parse(b.expires_at) > now
 
 // Все строки брони, в которую входит эта строка (или все строки группы по её номеру).
+// group_id придумывает сайт покупателя, поэтому ему одному верить нельзя: если передана строка брони,
+// берём только строки того же магазина и того же покупателя — чужую бронь так не «подмешать».
 export async function groupLines(db, bookingOrGroupId) {
-  const groupId = typeof bookingOrGroupId === 'string' ? bookingOrGroupId : bookingOrGroupId.group_id
+  const anchor = typeof bookingOrGroupId === 'string' ? null : bookingOrGroupId
+  const groupId = anchor ? anchor.group_id : bookingOrGroupId
   if (groupId) {
-    const lines = await db.where('bookings', 'group_id', 'EQUAL', groupId, { limit: 50 })
+    const all = await db.where('bookings', 'group_id', 'EQUAL', groupId, { limit: 50 })
+    const lines = anchor ? all.filter((l) => l.shop_id === anchor.shop_id && l.user_id === anchor.user_id) : all
     if (lines.length) return lines.sort((a, b) => String(a.product_name_ru ?? '').localeCompare(String(b.product_name_ru ?? '')))
   }
   if (typeof bookingOrGroupId !== 'string') return [bookingOrGroupId]
@@ -59,11 +63,13 @@ export async function setBookingStatus(ctx, bookingId, status, shopId) {
 }
 
 // Ответ на всю бронь из бота: «Подтвердить всё» (новые строки) или «Выдано» (все открытые).
-export async function setGroupStatus(ctx, groupId, status) {
+// anchor — строка этой брони, права на магазин которой уже проверены: меняются только строки
+// того же магазина и того же покупателя.
+export async function setGroupStatus(ctx, anchor, status) {
   const { db } = ctx
   if (!['confirmed', 'picked_up'].includes(status)) throw fail('bad_request')
   const from = status === 'confirmed' ? ['new'] : ACTIVE
-  const lines = await groupLines(db, groupId)
+  const lines = await groupLines(db, anchor)
   const targets = lines.filter((l) => from.includes(l.status) && Date.parse(l.expires_at) > Date.now())
   if (!targets.length) throw fail('too_late', 409)
   const now = new Date()
@@ -211,8 +217,11 @@ export async function photo(req) {
       response: new Response(upstream.body, {
         status: 200,
         headers: {
-          'Content-Type': upstream.headers.get('content-type')?.startsWith('image/') ? upstream.headers.get('content-type') : 'image/jpeg',
+          'Content-Type': /^image\/(jpeg|png|webp|gif)$/.test(upstream.headers.get('content-type') ?? '') ? upstream.headers.get('content-type') : 'image/jpeg',
           'Cache-Control': 'public, max-age=31536000, immutable',
+          // Браузер показывает ответ только как картинку и не пытается «угадать» в нём страницу или скрипт.
+          'X-Content-Type-Options': 'nosniff',
+          'Content-Security-Policy': "default-src 'none'; sandbox",
         },
       }),
     }
@@ -227,7 +236,7 @@ export async function photo(req) {
     const idToken = (req.header('authorization') || '').replace(/^Bearer /, '')
     const claims = await verifyIdToken(idToken, projectId)
     if (!claims) throw fail('auth', 401)
-    const asUser = new UserFirestore(projectId, idToken)
+    const asUser = new UserFirestore(projectId, idToken, undefined, req.header('x-firebase-appcheck') || null)
     const me = (await asUser.get('users', claims.uid)) ?? {}
     if (me.blocked === true) throw fail('forbidden', 403)
     const staff = ['admin', 'moderator'].includes(me.role)

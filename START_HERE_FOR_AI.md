@@ -51,6 +51,11 @@
 4. Роли: `users/<uid>.role` = `admin` | `moderator` | `seller` | пусто (покупатель).
    Первого админа владелец ставит руками в Firestore. Себе роль через сайт выдать нельзя — так и задумано.
 
+4а. **App Check (невидимая капча).** Любой новый запрос в Firebase «мимо библиотеки» (обычный `fetch`) должен
+   прикладывать пропуск: `appCheckToken()` из `src/lib/fb.js`, заголовок `X-Firebase-AppCheck` — иначе после включения
+   обязательной проверки в Firebase он перестанет работать. Данные из базы для страниц покупателей — только через
+   `safeCategory` / `safeShop` / `safeProduct` в `src/lib/catalog.js`. Подробно — `CLAUDE.md`, раздел 8г.
+
 ## 4. Ключи и пароли
 - Никогда не писать ключи и токены в код, README, комментарии или чат. Секреты — только в Cloudflare
   (Settings → Variables and Secrets), публичные `VITE_…` — в Cloudflare → Settings → Build → Variables.

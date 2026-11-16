@@ -126,14 +126,24 @@ async function onButton(req, db, query, botToken) {
   //   og:<статус>:<номер брони> — вся бронь сразу («Подтвердить всё», «Выдано»);
   //   bk:<статус>:<номер строки> — одна позиция («❌ Нет: …») и кнопки старых сообщений.
   if (action === 'bk' || action === 'og') {
-    const lines = action === 'og' ? await groupLines(db, extra ?? '') : [await db.get('bookings', extra ?? '')].filter(Boolean)
-    const shop = lines[0] && (await db.get('shops', lines[0].shop_id))
-    if (!lines.length || !(ctx.admin || (account && shop?.owner_uids?.includes(account.id)))) return answer(t.notAllowed)
+    let lines = action === 'og' ? await groupLines(db, extra ?? '') : [await db.get('bookings', extra ?? '')].filter(Boolean)
+    // Номер брони (group_id) придумывает сайт покупателя, поэтому под одним номером могут оказаться строки
+    // разных магазинов. Берём строку магазина, которым управляет нажавший, и дальше — только её магазин и покупателя.
+    let anchor = null
+    for (const shopId of [...new Set(lines.map((l) => l.shop_id))].slice(0, 5)) {
+      const shop = await db.get('shops', shopId)
+      if (ctx.admin || (account && shop?.owner_uids?.includes(account.id))) {
+        anchor = lines.find((l) => l.shop_id === shopId)
+        break
+      }
+    }
+    if (!anchor) return answer(t.notAllowed)
+    lines = lines.filter((l) => l.shop_id === anchor.shop_id && l.user_id === anchor.user_id)
     const base = query.message?.text ?? ''
     try {
       let note
       if (action === 'og') {
-        await setGroupStatus(ctx, lines[0].group_id ?? lines[0].id, token)
+        await setGroupStatus(ctx, lines[0], token)
         note = t.statusLine[token]
       } else {
         const updated = await setBookingStatus(ctx, lines[0].id, token, lines[0].shop_id)
@@ -178,6 +188,21 @@ export async function botSetup(req) {
   if (!botToken) return page(503, '❌ Не настроено: нет TELEGRAM_BOT_TOKEN в настройках сайта.')
   const db = firestoreFromEnv(req.env)
   try {
+    // Эту страницу может открыть кто угодно. Чтобы чужой человек не «переключил» бота на другой адрес
+    // (например, на старую копию сайта), менять уже подключённый адрес можно только через настройку
+    // SITE_HOST в Cloudflare — её может поменять только владелец.
+    if (!req.env.SITE_HOST) {
+      const current = await callTelegram(botToken, 'getWebhookInfo', {})
+      const currentHost = current?.url ? new URL(current.url).host : ''
+      if (currentHost && currentHost !== siteHost(req)) {
+        return page(
+          409,
+          `⚠️ Бот уже подключён к адресу ${escapeHtml(currentHost)}, а эта страница открыта на ${escapeHtml(siteHost(req))}.<br>` +
+            `Чтобы переключить бота на новый адрес: Cloudflare → Settings → Variables and Secrets → добавьте ` +
+            `<b>SITE_HOST</b> = <b>${escapeHtml(siteHost(req))}</b> (без https://), сохраните и откройте эту страницу ещё раз.`,
+        )
+      }
+    }
     await callTelegram(botToken, 'setWebhook', {
       url: `https://${siteHost(req)}/api/bot-webhook`,
       secret_token: await webhookSecret(botToken),
