@@ -28,6 +28,7 @@ service cloud.firestore {
     // Человек создаёт свой профиль и меняет имя, фамилию, телефон. Роль и блокировку — только админ
     // (модератор может блокировать покупателей и продавцов). Telegram пишет только сервер бота;
     // сам человек может его только отвязать (очистить).
+    // Счётчик броней за сутки (book_*) растёт только вместе с новой бронью — см. bookCounterOk ниже.
     function profileOk(d) {
       return str(d.name, 80) && d.name.size() > 0
         && optStr(d.get('surname', null), 80)
@@ -35,6 +36,25 @@ service cloud.firestore {
         && (d.get('lang', 'uz') in ['uz', 'ru']);
     }
     match /users/{userId} {
+      // Счётчик броней (защита от «забронировать всё подряд»): не больше 20 вещей за 24 часа на аккаунт.
+      // Поля: book_from — когда начались текущие сутки счёта, book_count — сколько вещей за них забронировано,
+      // book_ref — номер брони, вместе с которой счётчик вырос. Меняется только в одной операции с новой
+      // бронью этого человека (её правило требует book_ref = её номер), отдельно накрутить или сбросить нельзя.
+      function bookCounterOk() {
+        let before = resource.data;
+        let after = request.resource.data;
+        let bookingPath = /databases/$(database)/documents/bookings/$(after.book_ref);
+        let booking = getAfter(bookingPath).data;
+        let qty = booking.get('qty', 1);
+        let hadWindow = before.get('book_from', null) != null;
+        let fresh = !hadWindow || before.book_from + duration.value(1, 'd') < request.time;
+        return !exists(bookingPath)
+          && booking.user_id == uid() && booking.status == 'new'
+          && after.book_count is int && after.book_count >= 1 && after.book_count <= 20
+          && ((fresh && after.book_from == request.time && after.book_count == qty)
+            || (hadWindow && after.book_from == before.book_from
+              && after.book_count == before.get('book_count', 0) + qty));
+      }
       allow read: if signedIn() && (uid() == userId || isStaff());
       allow create: if signedIn() && uid() == userId
         && request.resource.data.keys().hasOnly(['email', 'email_verified', 'name', 'surname', 'phone', 'role', 'blocked', 'lang', 'created_at'])
@@ -51,6 +71,9 @@ service cloud.firestore {
         || (uid() == userId
           && changed().hasOnly(['telegram_id', 'telegram_username', 'telegram_name'])
           && request.resource.data.get('telegram_id', null) == null)
+        || (uid() == userId
+          && changed().hasOnly(['book_count', 'book_from', 'book_ref'])
+          && bookCounterOk())
         || (isAdmin() && uid() != userId)
         || (isStaff() && uid() != userId && changed().hasOnly(['blocked'])
           && !(resource.data.get('role', null) in ['admin', 'moderator']))
@@ -83,7 +106,10 @@ service cloud.firestore {
       function isOwner() { return signedIn() && uid() in resource.data.get('owner_uids', []); }
       allow read: if resource.data.get('is_active', false) == true || isOwner() || isStaff();
       // Заявка: только от своего имени, статус «ждёт решения», скрыт, без подписки.
-      allow create: if signedIn() && notBlocked()
+      // Только с подтверждённым email и только в одну из 5 «ячеек» этого аккаунта (номер магазина =
+      // <uid>-1 … <uid>-5): больше 5 заявок с одного аккаунта создать нельзя, даже скриптом.
+      allow create: if signedIn() && verified() && notBlocked()
+        && shopId in [uid() + '-1', uid() + '-2', uid() + '-3', uid() + '-4', uid() + '-5']
         && request.resource.data.keys().hasOnly(['name', 'description_uz', 'description_ru', 'address_uz', 'address_ru',
           'landmark_uz', 'landmark_ru', 'district', 'latitude', 'longitude', 'phone', 'telegram_username', 'opens_at',
           'closes_at', 'owner_uids', 'owner_lang', 'status', 'is_active', 'subscription_until', 'created_at'])
@@ -155,34 +181,73 @@ service cloud.firestore {
       function isShopOwner() { return signedIn() && uid() in resource.data.get('owner_uids', []); }
       function isOpen() { return resource.data.status in ['new', 'confirmed']; }
       function onlyStatus() { return changed().hasOnly(['status', 'updated_at']) && request.resource.data.updated_at == request.time; }
-      // Новая бронь (строка): только своя, email подтверждён, не заблокирован, срок ~2 дня, цена и владельцы — как в базе,
-      // 1–5 штук (qty), и в той же операции у товара забрано ровно qty штук (hold_ref = номер этой строки).
+      // Новая бронь (строка): только своя, email подтверждён, есть профиль и он не заблокирован, срок ~2 дня,
+      // 1–5 штук (qty), и в той же операции: у товара забрано ровно qty штук (hold_ref = номер этой строки)
+      // и вырос счётчик броней за сутки в профиле (book_ref = номер этой строки, не больше 20 вещей).
+      // В брони — только известные поля. Цена, владельцы, название, цвет и размер — как у товара в базе,
+      // телефон и email — как в профиле: покупатель не может вписать в бронь свой текст или чужой код.
       // Строки одной брони из корзины связаны group_id и общим кодом.
+      function categoryCopyOk(c) {
+        return c == null || (c is map && c.keys().hasOnly(['slug', 'emoji'])
+          && optStr(c.get('slug', null), 100) && optStr(c.get('emoji', null), 100));
+      }
       function newOk() {
         let d = request.resource.data;
+        let prof = get(userPath(uid())).data;
+        let profAfter = getAfter(userPath(uid())).data;
         let product = get(/databases/$(database)/documents/products/$(d.product_id)).data;
         let productAfter = getAfter(/databases/$(database)/documents/products/$(d.product_id)).data;
         let shop = get(/databases/$(database)/documents/shops/$(product.shop_id)).data;
-        return verified() && notBlocked()
+        let variant = product.variants[productAfter.hold_idx];
+        return verified() && prof.get('blocked', false) != true
+          && d.keys().hasOnly(['code', 'group_id', 'qty', 'status', 'created_at', 'updated_at', 'expires_at',
+            'user_id', 'buyer_name', 'buyer_phone', 'buyer_email', 'buyer_lang', 'product_id', 'variant_id',
+            'shop_id', 'owner_uids', 'product_name_uz', 'product_name_ru', 'size', 'color_uz', 'color_ru',
+            'price', 'shop', 'product'])
           && d.user_id == uid() && d.status == 'new'
           && d.get('qty', 1) is int && d.get('qty', 1) >= 1 && d.get('qty', 1) <= 5
           && (d.get('group_id', null) == null || str(d.group_id, 40))
+          && str(d.code, 8)
           && d.created_at == request.time && d.updated_at == request.time
           && d.expires_at > request.time + duration.value(1, 'd')
           && d.expires_at < request.time + duration.value(3, 'd')
           && product.get('is_active', false) == true && shop.get('is_active', false) == true
           && d.shop_id == product.shop_id && d.price == product.price
           && d.owner_uids == shop.get('owner_uids', [])
-          && productAfter.get('hold_ref', '') == bookingId && productAfter.get('hold_op', '') == 'take';
+          && productAfter.get('hold_ref', '') == bookingId && productAfter.get('hold_op', '') == 'take'
+          && profAfter.get('book_ref', '') == bookingId
+          && d.variant_id == variant.id
+          && d.get('product_name_uz', null) == product.get('name_uz', null)
+          && d.get('product_name_ru', null) == product.get('name_ru', null)
+          && d.get('size', null) == variant.get('size', null)
+          && d.get('color_uz', null) == variant.get('color_uz', null)
+          && d.get('color_ru', null) == variant.get('color_ru', null)
+          && d.get('buyer_phone', null) == prof.get('phone', null)
+          && d.get('buyer_email', null) == prof.get('email', null)
+          && optStr(d.get('buyer_name', null), 600)
+          && d.get('buyer_lang', 'uz') in ['uz', 'ru']
+          && d.shop is map && d.shop.keys().hasOnly(['id', 'name', 'address_uz', 'address_ru', 'landmark_uz',
+            'landmark_ru', 'latitude', 'longitude', 'phone', 'telegram_username', 'opens_at', 'closes_at'])
+          && d.product is map && d.product.keys().hasOnly(['category'])
+          && categoryCopyOk(d.product.get('category', null));
+      }
+      // Отмена и истечение — только вместе с возвратом вещи: в той же операции товар получает hold_ref =
+      // номер этой брони и hold_op = give (его правило проверяет «+qty»). Иначе можно было бы бронировать
+      // и отменять, не возвращая вещи, и так обнулить остатки магазина. Товар удалён — возвращать некуда.
+      function productAfterOf(id) { return getAfter(/databases/$(database)/documents/products/$(id)).data; }
+      function stockBack() {
+        return !exists(/databases/$(database)/documents/products/$(resource.data.product_id))
+          || (productAfterOf(resource.data.product_id).get('hold_ref', '') == bookingId
+            && productAfterOf(resource.data.product_id).get('hold_op', '') == 'give');
       }
       allow read: if isBuyer() || isShopOwner() || isStaff();
       allow create: if signedIn() && newOk();
       allow update: if isStaff()
-        // Покупатель отменяет свою действующую бронь.
-        || (isBuyer() && isOpen() && onlyStatus() && request.resource.data.status == 'cancelled')
+        // Покупатель отменяет свою действующую бронь (вещь возвращается в наличие).
+        || (isBuyer() && isOpen() && onlyStatus() && request.resource.data.status == 'cancelled' && stockBack())
         // Срок вышел — бронь закрывает покупатель или магазин (вещь возвращается).
         || ((isBuyer() || isShopOwner()) && isOpen() && onlyStatus()
-          && request.resource.data.status == 'expired' && resource.data.expires_at <= request.time)
+          && request.resource.data.status == 'expired' && resource.data.expires_at <= request.time && stockBack())
         // Магазин отвечает: подтвердил / нет в наличии / выдан.
         || (isShopOwner() && onlyStatus() && resource.data.expires_at > request.time
           && ((resource.data.status == 'new' && request.resource.data.status in ['confirmed', 'unavailable', 'picked_up'])

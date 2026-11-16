@@ -14,6 +14,9 @@ import { notify } from './notify.js'
 
 const MAX_PRODUCTS = 500
 const MAX_PENDING = 2
+// Заявки магазина создаются только в «ячейках» аккаунта: номер магазина = <uid>-1 … <uid>-5.
+// Так правила базы не дают создать с одного аккаунта больше 5 заявок (даже скриптом, в обход сайта).
+const SHOP_SLOTS = 5
 const ACTIVE_BOOKING = ['new', 'confirmed']
 
 function me() {
@@ -84,14 +87,17 @@ export async function fetchMyShop(id) {
 }
 
 // Заявка «Добавить магазин»: магазин со статусом pending, админы получают сообщение в боте.
+// Нужен подтверждённый email (это проверяют и правила базы).
 export async function applyShop(input, lang) {
   const { user, profile } = me()
   if (profile?.blocked) throw codeError('blocked')
-  const { db, fs } = await fire()
+  if (!user.emailVerified) throw codeError('not_verified')
+  const { db, fs, auth } = await fire()
+  // Свежий пропуск: в нём должен быть «email подтверждён» (его проверяют правила).
+  await auth.currentUser?.getIdToken(true).catch(() => {})
   try {
     const mine = await fs.getDocs(fs.query(fs.collection(db, 'shops'), fs.where('owner_uids', 'array-contains', user.uid)))
     if (mine.docs.filter((d) => d.data().status === 'pending').length >= MAX_PENDING) throw codeError('too_many')
-    const ref = fs.doc(fs.collection(db, 'shops'))
     const data = {
       ...cleanShop(input, { required: true }),
       owner_uids: [user.uid],
@@ -101,9 +107,25 @@ export async function applyShop(input, lang) {
       subscription_until: null,
       created_at: fs.serverTimestamp(),
     }
-    await fs.setDoc(ref, data)
-    notify('shop_applied', ref.id)
-    return shopOut({ id: ref.id, ...data, created_at: new Date().toISOString() })
+    // Первая свободная ячейка. Отказ базы на ячейке (например, она занята магазином, из которого
+    // человека убрали) — пробуем следующую; два отказа подряд — значит, дело не в ячейке.
+    const taken = new Set(mine.docs.map((d) => d.id))
+    let id = null
+    let denied = 0
+    for (let slot = 1; slot <= SHOP_SLOTS && !id && denied < 2; slot++) {
+      const candidate = `${user.uid}-${slot}`
+      if (taken.has(candidate)) continue
+      try {
+        await fs.setDoc(fs.doc(db, 'shops', candidate), data)
+        id = candidate
+      } catch (error) {
+        if (error?.code !== 'permission-denied') throw error
+        denied++
+      }
+    }
+    if (!id) throw codeError(denied ? 'forbidden' : 'too_many')
+    notify('shop_applied', id)
+    return shopOut({ id, ...data, created_at: new Date().toISOString() })
   } catch (error) {
     throw toCode(error)
   }

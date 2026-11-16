@@ -234,7 +234,8 @@ const fallbackDesign = { drawing: null, pose: 0, w: 0.6, palettes: [
 ] }
 
 export function designFor(slug) {
-  return designs[slug] ?? fallbackDesign
+  // Только свои категории из списка выше (slug может прийти из базы — например, из брони).
+  return typeof slug === 'string' && Object.prototype.hasOwnProperty.call(designs, slug) ? designs[slug] : fallbackDesign
 }
 
 // Фото для выбранного цвета: своё у цвета, иначе общее у категории, иначе нет (рисунок).
@@ -247,13 +248,17 @@ export function photosOf(design) {
   return [design.photo, ...design.palettes.map((palette) => palette.photo)].filter(Boolean)
 }
 
+// Любой текст из базы (название, эмодзи) вставляется в HTML только через эту функцию:
+// иначе вместо эмодзи можно было бы подсунуть чужой код, и он выполнился бы на странице.
 const escapeHTML = (text) =>
-  String(text).replace(/[&<>"]/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch])
+  String(text ?? '').replace(/[&<>"']/g, (ch) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch])
+// Эмодзи — короткий значок: длинный текст обрезаем.
+const safeEmoji = (emoji) => escapeHTML([...String(emoji ?? '')].slice(0, 8).join(''))
 
 // Рисунок вещи в любом цвете товара (для страниц категории и товара, пока нет фото от магазина).
 export function itemHTML(design, color, label, emoji) {
   const safeLabel = escapeHTML(label)
-  if (!design.drawing) return `<span class="sc-emoji" role="img" aria-label="${safeLabel}">${emoji ?? ''}</span>`
+  if (!design.drawing) return `<span class="sc-emoji" role="img" aria-label="${safeLabel}">${safeEmoji(emoji)}</span>`
   return drawings[design.drawing](color, isLight(color) ? '#1F2340' : '#F5F1E8', safeLabel)
 }
 
@@ -264,5 +269,5 @@ export function artHTML(design, paletteIndex, label, emoji) {
   if (photo) return `<img src="${photo}" alt="${safeLabel}" draggable="false">`
   const palette = design.palettes[paletteIndex]
   if (design.drawing) return drawings[design.drawing](palette.c, palette.a, safeLabel)
-  return `<span class="sc-emoji" role="img" aria-label="${safeLabel}">${emoji ?? ''}</span>`
+  return `<span class="sc-emoji" role="img" aria-label="${safeLabel}">${safeEmoji(emoji)}</span>`
 }

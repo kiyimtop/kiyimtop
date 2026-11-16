@@ -515,5 +515,7 @@
   "booking.error.too_many_items": "Bir vaqtda {items} tadan ko‘p narsani bron qilib bo‘lmaydi. Joriy bronlarni olib keting yoki bekor qiling.",
   "booking.error.too_many_shops": "Bir vaqtda {shops} tadan ko‘p do‘konda bron ushlab bo‘lmaydi.",
   "booking.cancelConfirmAll": "Bu do‘kondagi butun bron bekor qilinsinmi?",
-  "seller.confirmAll": "Hammasini tasdiqlash"
+  "seller.confirmAll": "Hammasini tasdiqlash",
+  "booking.error.too_many_today": "Bir sutkada 20 tadan ko‘p narsani bron qilib bo‘lmaydi. Ertaga urinib ko‘ring.",
+  "seller.error.not_verified": "Avval emailni tasdiqlang: profilni oching va xatdagi havola orqali o‘ting. So‘ng arizani qayta yuboring."
 }

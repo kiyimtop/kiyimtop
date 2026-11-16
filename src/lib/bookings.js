@@ -23,6 +23,12 @@ export const HOLD_DAYS = 2
 // Одновременно действующих: не больше 10 штук товаров и 3 магазинов (защита от брони «просто так»).
 export const MAX_ITEMS = 10
 export const MAX_SHOPS = 3
+// За 24 часа с одного аккаунта — не больше 20 вещей. Это проверяют и правила базы (счётчик в профиле:
+// book_from, book_count, book_ref), поэтому обойти лимит скриптом нельзя. Меняешь число — поменяй его
+// и в firebase/firestore.rules (bookCounterOk), и в тексте booking.error.too_many_today (uz.json, ru.json).
+export const MAX_DAILY = 20
+// Запас на неточные часы телефона: считаем сутки «новыми» на 5 минут позже, чем правила базы.
+const CLOCK_MARGIN = 5 * 60 * 1000
 const DAY = 24 * 60 * 60 * 1000
 const ACTIVE = ['new', 'confirmed']
 
@@ -186,11 +192,24 @@ export async function checkout(lines) {
   }
 }
 
-// Одна строка брони одной транзакцией: проверка наличия, количество − qty, запись строки.
-// Если двое одновременно берут последние вещи — второй получит «sold_out».
-async function bookLine(db, fs, { user, profile, line, groupId, code }) {
+// Одна строка брони одной транзакцией: проверка наличия, количество − qty, счётчик броней за сутки
+// в профиле и запись строки. Если двое одновременно берут последние вещи — второй получит «sold_out».
+async function bookLine(db, fs, args) {
+  try {
+    return await bookLineOnce(db, fs, args, true)
+  } catch (error) {
+    // Совместимость со старыми правилами базы (без счётчика броней): они не дают менять счётчик в профиле,
+    // поэтому пробуем ещё раз без него. С новыми правилами такая попытка просто получит отказ.
+    // Когда новые правила опубликованы в Firebase, этот запасной путь можно убрать.
+    if (error?.code !== 'permission-denied') throw error
+    return bookLineOnce(db, fs, args, false)
+  }
+}
+
+async function bookLineOnce(db, fs, { user, profile, line, groupId, code }, withCounter) {
   const bookingRef = fs.doc(fs.collection(db, 'bookings'))
   const productRef = fs.doc(db, 'products', line.product_id)
+  const userRef = fs.doc(db, 'users', user.uid)
   return fs.runTransaction(db, async (tx) => {
     const productSnap = await tx.get(productRef)
     const product = productSnap.exists() ? productSnap.data() : null
@@ -203,11 +222,25 @@ async function bookLine(db, fs, { user, profile, line, groupId, code }) {
     const categorySnap = product.category_id ? await tx.get(fs.doc(db, 'categories', product.category_id)) : null
     const category = categorySnap?.exists() ? categorySnap.data() : null
 
+    // Профиль из базы: счётчик броней за сутки, телефон и email (правила сверяют их с бронью).
+    const userSnap = withCounter ? await tx.get(userRef) : null
+    const account = userSnap?.exists() ? userSnap.data() : null
+
     const variant = variants[index]
     if (!((variant.quantity ?? 0) >= line.qty)) throw codeError('sold_out')
     variant.quantity -= line.qty
 
     const now = Date.now()
+    // Счётчик: сутки считаются с первой брони (book_from); прошли — счёт начинается заново.
+    let counter = null
+    if (account) {
+      const from = typeof account.book_from?.toMillis === 'function' ? account.book_from.toMillis() : null
+      const fresh = from === null || now - from > DAY + CLOCK_MARGIN
+      const count = (fresh ? 0 : account.book_count ?? 0) + line.qty
+      if (count > MAX_DAILY) throw codeError('too_many_today')
+      counter = { book_count: count, book_ref: bookingRef.id, ...(fresh ? { book_from: fs.serverTimestamp() } : {}) }
+    }
+    const who = account ?? profile ?? {}
     const data = {
       code,
       group_id: groupId,
@@ -217,9 +250,9 @@ async function bookLine(db, fs, { user, profile, line, groupId, code }) {
       updated_at: fs.serverTimestamp(),
       expires_at: fs.Timestamp.fromMillis(now + HOLD_DAYS * DAY),
       user_id: user.uid,
-      buyer_name: [profile?.name, profile?.surname].filter(Boolean).join(' ') || user.name || null,
-      buyer_phone: profile?.phone ?? null,
-      buyer_email: user.email ?? null,
+      buyer_name: ([who.name, who.surname].filter(Boolean).join(' ') || user.name || '').slice(0, 170) || null,
+      buyer_phone: who.phone ?? null,
+      buyer_email: account ? account.email ?? null : user.email ?? null,
       buyer_lang: document.documentElement.lang === 'ru' ? 'ru' : 'uz',
       product_id: line.product_id,
       variant_id: line.variant_id,
@@ -233,9 +266,14 @@ async function bookLine(db, fs, { user, profile, line, groupId, code }) {
       price: product.price ?? null,
       // Копия магазина и категории на момент брони — «Мои брони» показывают их без лишних запросов.
       shop: pick(shop, SHOP_FIELDS),
-      product: { category: category ? { slug: category.slug ?? product.category_id, emoji: category.emoji ?? null } : null },
+      product: {
+        category: category
+          ? { slug: String(category.slug ?? product.category_id).slice(0, 60), emoji: category.emoji ? String(category.emoji).slice(0, 16) : null }
+          : null,
+      },
     }
     tx.update(productRef, { variants, hold_ref: bookingRef.id, hold_op: 'take', hold_idx: index })
+    if (counter) tx.update(userRef, counter)
     tx.set(bookingRef, data)
     const iso = new Date(now).toISOString()
     return { id: bookingRef.id, ...data, created_at: iso, updated_at: iso, expires_at: new Date(now + HOLD_DAYS * DAY).toISOString() }
@@ -280,7 +318,11 @@ export async function cancelBooking(id) {
 }
 
 // Закрыть строку со статусом cancelled или expired и вернуть вещь (+qty к варианту).
-// Если вариант магазин уже удалил — просто закрываем строку.
+// Правила базы разрешают покупателю и магазину закрыть бронь только вместе с возвратом вещи
+// (иначе можно было бы обнулять остатки). Поэтому:
+//   товар удалён совсем — просто закрываем строку (возвращать некуда);
+//   магазин удалил только этот цвет/размер — закрыть строку может админ; у покупателя и магазина
+//   просроченная бронь остаётся как есть (везде показывается «истекла» по сроку), а отмена — «недоступна».
 export async function releaseOne(id, status) {
   const { db, fs } = await fire()
   const bookingRef = fs.doc(db, 'bookings', id)
@@ -294,6 +336,10 @@ export async function releaseOne(id, status) {
     const productSnap = await tx.get(productRef)
     const variants = productSnap.exists() ? (productSnap.data().variants ?? []).map((v) => ({ ...v })) : []
     const index = variants.findIndex((v) => v.id === booking.variant_id)
+    if (productSnap.exists() && index < 0 && !currentAccount().profile?.isStaff) {
+      if (status === 'expired') return
+      throw codeError('not_found')
+    }
     tx.update(bookingRef, { status, updated_at: fs.serverTimestamp() })
     if (index >= 0) {
       variants[index].quantity = (variants[index].quantity ?? 0) + qtyOf(booking)
