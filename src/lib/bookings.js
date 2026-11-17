@@ -1,6 +1,6 @@
 import { currentAccount } from './auth.js'
 import { MAX_LINE_QTY } from './cart.js'
-import { clearCatalogCache, fetchProduct } from './catalog.js'
+import { fetchProduct, patchStock } from './catalog.js'
 import { codeError, fire, plain, toCode } from './db.js'
 import { notify } from './notify.js'
 
@@ -39,6 +39,16 @@ const SHOP_FIELDS = [
 const pick = (object, keys) => Object.fromEntries(keys.map((key) => [key, object[key] ?? null]))
 
 const randomCode = () => String(1000 + (crypto.getRandomValues(new Uint32Array(1))[0] % 9000))
+
+// Защита от неявок: бронь, за которой не пришли (срок истёк, её не отменили и ничего не выдали), — «неявка».
+// Три неявки за последние 30 дней — новые брони закрыты, пока старые неявки не выйдут за эти 30 дней.
+// Отменил вовремя или магазин ответил «нет в наличии» — это не неявка.
+// (Проверяет сайт; от скриптов в обход сайта защищает лимит «20 вещей в сутки» в правилах базы.)
+export const NO_SHOW_LIMIT = 3
+export const NO_SHOW_DAYS = 30
+export function noShowCount(lines, now = Date.now()) {
+  return groupBookings(lines).filter((group) => group.state === 'expired' && now - Date.parse(group.expires_at) < NO_SHOW_DAYS * DAY).length
+}
 
 export const qtyOf = (booking) => booking.qty ?? 1
 export const groupIdOf = (booking) => booking.group_id ?? booking.id
@@ -159,6 +169,7 @@ export async function checkout(lines) {
     // Лимиты: вместе с уже действующими бронями — не больше 10 штук и 3 магазинов.
     const mine = await myLines(db, fs, user.uid)
     await releaseExpired(mine).catch(() => {})
+    if (noShowCount(mine) >= NO_SHOW_LIMIT) throw codeError('no_shows')
     const active = mine.filter(isActive)
     const activeItems = active.reduce((sum, b) => sum + qtyOf(b), 0)
     const shops = new Set([...active.map((b) => b.shop_id), ...byShop.keys()])
@@ -185,7 +196,6 @@ export async function checkout(lines) {
       orders.push(order)
     }
     if (unknown.length) orders.push({ group_id: null, code: null, shop: null, booked: [], failed: unknown })
-    clearCatalogCache()
     return { orders }
   } catch (error) {
     throw toCode(error)
@@ -195,6 +205,13 @@ export async function checkout(lines) {
 // Одна строка брони одной транзакцией: проверка наличия, количество − qty, счётчик броней за сутки
 // в профиле и запись строки. Если двое одновременно берут последние вещи — второй получит «sold_out».
 async function bookLine(db, fs, args) {
+  const booking = await bookLineSafe(db, fs, args)
+  // Каталог целиком не перечитываем — просто уменьшаем остаток в запомненной копии.
+  patchStock(args.line.product_id, args.line.variant_id, -args.line.qty)
+  return booking
+}
+
+async function bookLineSafe(db, fs, args) {
   try {
     return await bookLineOnce(db, fs, args, true)
   } catch (error) {
@@ -296,7 +313,6 @@ export async function cancelGroup(group) {
   if (!open.length) return { ok: true }
   try {
     for (const line of open) await releaseOne(line.id, 'cancelled')
-    clearCatalogCache()
     notify('booking_cancelled', open[0].id)
     return { ok: true }
   } catch (error) {
@@ -309,7 +325,6 @@ export async function cancelBooking(id) {
   me()
   try {
     await releaseOne(id, 'cancelled')
-    clearCatalogCache()
     notify('booking_cancelled', id)
     return { ok: true }
   } catch (error) {
@@ -326,7 +341,7 @@ export async function cancelBooking(id) {
 export async function releaseOne(id, status) {
   const { db, fs } = await fire()
   const bookingRef = fs.doc(db, 'bookings', id)
-  await fs.runTransaction(db, async (tx) => {
+  const returned = await fs.runTransaction(db, async (tx) => {
     const snap = await tx.get(bookingRef)
     const booking = snap.exists() ? plain(snap.data()) : null
     if (!booking || !ACTIVE.includes(booking.status)) throw codeError('not_found')
@@ -337,15 +352,17 @@ export async function releaseOne(id, status) {
     const variants = productSnap.exists() ? (productSnap.data().variants ?? []).map((v) => ({ ...v })) : []
     const index = variants.findIndex((v) => v.id === booking.variant_id)
     if (productSnap.exists() && index < 0 && !currentAccount().profile?.isStaff) {
-      if (status === 'expired') return
+      if (status === 'expired') return null
       throw codeError('not_found')
     }
     tx.update(bookingRef, { status, updated_at: fs.serverTimestamp() })
-    if (index >= 0) {
-      variants[index].quantity = (variants[index].quantity ?? 0) + qtyOf(booking)
-      tx.update(productRef, { variants, hold_ref: id, hold_op: 'give', hold_idx: index })
-    }
+    if (index < 0) return null
+    variants[index].quantity = (variants[index].quantity ?? 0) + qtyOf(booking)
+    tx.update(productRef, { variants, hold_ref: id, hold_op: 'give', hold_idx: index })
+    return { product_id: booking.product_id, variant_id: booking.variant_id, qty: qtyOf(booking) }
   })
+  // Вещь вернулась в наличие — правим остаток в запомненном каталоге (без его перезагрузки).
+  if (returned) patchStock(returned.product_id, returned.variant_id, returned.qty)
 }
 
 // Просроченные действующие строки из списка → «expired», вещь — обратно. Ошибки по одной — не мешают.
@@ -360,5 +377,4 @@ export async function releaseExpired(bookings) {
       console.error('Бронь не отпустилась:', booking.id, error)
     }
   }
-  if (stale.length) clearCatalogCache()
 }

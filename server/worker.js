@@ -1,8 +1,10 @@
 // Cloudflare Workers: главный файл сайта (см. wrangler.jsonc).
-// Сайт (брони, кабинет, админка) работает прямо с Firebase — как в TheStarth. Сервер нужен только
-// Telegram-боту: адреса /api/… (server/accounts.js, server/handlers.js, server/notify.js, server/seller.js),
+// Сайт (брони, кабинет, админка) работает прямо с Firebase — как в TheStarth. Сервер нужен
+// Telegram-боту, фото и общей копии каталога (server/catalog.js — чтобы не тратить лимит чтений Firebase):
+// адреса /api/… (server/accounts.js, server/handlers.js, server/notify.js, server/seller.js, server/catalog.js),
 // всё остальное — готовые страницы сайта из папки dist (env.ASSETS).
 import { account, tgSignin } from './accounts.js'
+import { catalog } from './catalog.js'
 import { botSetup, botWebhook } from './handlers.js'
 import { notify } from './notify.js'
 import { forCloudflare } from './run.js'
@@ -15,6 +17,7 @@ const routes = {
   '/api/bot-webhook': forCloudflare('bot-webhook', botWebhook),
   '/api/bot-setup': forCloudflare('bot-setup', botSetup),
   '/api/photo': forCloudflare('photo', photo), // фото товаров (хранятся в Telegram)
+  '/api/catalog': forCloudflare('catalog', catalog), // общая копия каталога для всех посетителей
 }
 
 export default {

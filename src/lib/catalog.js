@@ -1,5 +1,6 @@
+import { authHeader } from './auth.js'
 import { asset } from './base.js'
-import { readCollection } from './firebase.js'
+import { readCollection, readDocument } from './firebase.js'
 import { compareSizes } from './sizes.js'
 
 // Все запросы к каталогу — здесь, чтобы экраны не обращались к базе напрямую.
@@ -98,40 +99,119 @@ export function safeProduct(product, { strict = true } = {}) {
   }
 }
 
-const CACHE_MS = 2 * 60 * 1000
-let catalogCache = null
+// ---------- Откуда берётся каталог ----------
+// 1) из памяти страницы и из памяти браузера (localStorage) — 10 минут после загрузки, без единого запроса;
+// 2) с нашего сервера: GET /api/catalog — одна общая копия на всех посетителей (server/catalog.js),
+//    чтения Firebase при этом не тратятся;
+// 3) если сервер не ответил (нет ключа, сбой) — напрямую из Firebase, как раньше.
+// Остатки в списках могут отставать на несколько минут; точный остаток страница товара берёт из базы
+// (fetchProduct), а после своей брони или отмены копия правится на месте (patchStock).
+const CACHE_MS = 10 * 60 * 1000
+const BEHIND_MS = 20 * 1000 // сервер ещё не подхватил наши изменения — спросим снова через 20 секунд
+const STORE_KEY = 'kt_catalog_v1'
+let catalogCache = null // { at, ttl, data }
 let catalogLoading = null
+let signal = null // идёт сигнал серверу «каталог изменился»
+let signalAt = 0 // время сервера, когда он принял наш последний сигнал
 
-async function loadCatalog() {
-  if (catalogCache && Date.now() - catalogCache.at < CACHE_MS) return catalogCache.data
-  catalogLoading ??= Promise.all([
+function readStore() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(STORE_KEY) ?? 'null')
+    const ok = saved && Date.now() - saved.savedAt < CACHE_MS && Date.now() >= saved.savedAt && Array.isArray(saved.raw?.products)
+    return ok ? saved : null
+  } catch {
+    return null
+  }
+}
+
+function writeStore(raw, savedAt = Date.now()) {
+  try {
+    const text = JSON.stringify({ savedAt, raw })
+    // Очень большой каталог в память браузера не кладём (у неё предел около 5 МБ).
+    if (text.length < 3_000_000) localStorage.setItem(STORE_KEY, text)
+    else localStorage.removeItem(STORE_KEY)
+  } catch {
+    // память браузера недоступна или переполнена — работаем без неё
+  }
+}
+
+async function fromServer() {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), 8000)
+  try {
+    const response = await fetch(asset('/api/catalog'), { signal: controller.signal })
+    if (!response.ok) throw new Error(`catalog ${response.status}`)
+    const raw = await response.json()
+    if (!Array.isArray(raw?.categories) || !Array.isArray(raw.shops) || !Array.isArray(raw.products)) throw new Error('catalog format')
+    return raw
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+async function fromFirestore() {
+  const [categories, shops, products] = await Promise.all([
     readCollection('categories'),
     readCollection('shops', 'is_active', true),
     readCollection('products', 'is_active', true),
   ])
-    .then(([rawCategories, rawShops, rawProducts]) => {
-      const categories = rawCategories.map(safeCategory).sort((a, b) => a.sort_order - b.sort_order)
-      const products = rawProducts.map((product) => safeProduct(product)).filter(Boolean)
-      // Подписка закончилась — магазин не показываем (сервер тоже скрывает его, это на всякий случай).
-      const shops = rawShops.map(safeShop).filter((shop) => !shop.subscription_until || Date.parse(shop.subscription_until) > Date.now())
-      const shopsById = new Map(shops.map((shop) => [shop.id, shop]))
-      const data = {
-        categories,
-        shops,
-        shopsById,
-        // Товары скрытого магазина не показываем. Сначала дешёвые.
-        products: products
-          .filter((product) => shopsById.has(product.shop_id))
-          .map((product) => ({ ...product, photo_urls: product.photo_urls.map(photoSrc) }))
-          .sort((a, b) => a.price - b.price),
-      }
-      catalogCache = { at: Date.now(), data }
-      return data
-    })
-    .finally(() => {
-      catalogLoading = null
-    })
+  return { at: Date.now(), categories, shops, products }
+}
+
+// Сырые данные из базы → каталог для страниц (проверенные записи, только открытые магазины, сначала дешёвые).
+function build(raw) {
+  const categories = raw.categories.map(safeCategory).sort((a, b) => a.sort_order - b.sort_order)
+  const products = raw.products.map((product) => safeProduct(product)).filter(Boolean)
+  // Подписка закончилась — магазин не показываем (сервер тоже скрывает его, это на всякий случай).
+  const shops = raw.shops.map(safeShop).filter((shop) => !shop.subscription_until || Date.parse(shop.subscription_until) > Date.now())
+  const shopsById = new Map(shops.map((shop) => [shop.id, shop]))
+  return {
+    categories,
+    shops,
+    shopsById,
+    // Товары скрытого магазина не показываем. Сначала дешёвые.
+    products: products
+      .filter((product) => shopsById.has(product.shop_id))
+      .map((product) => ({ ...product, photo_urls: product.photo_urls.map(photoSrc) }))
+      .sort((a, b) => a.price - b.price),
+  }
+}
+
+async function loadCatalog() {
+  if (catalogCache && Date.now() - catalogCache.at < catalogCache.ttl) return catalogCache.data
+  catalogLoading ??= (async () => {
+    if (signal) await signal // сначала сервер должен узнать, что каталог изменился
+    const saved = readStore()
+    let raw = saved?.raw
+    let at = saved?.savedAt ?? Date.now()
+    let ttl = CACHE_MS
+    if (!raw) {
+      raw = (await fromServer().catch(() => null)) ?? (await fromFirestore())
+      at = Date.now()
+      // Мы только что что-то поменяли, а сервер отдал копию старше этого — не запоминаем её надолго.
+      if (signalAt && Number(raw.at) < signalAt) ttl = BEHIND_MS
+      else writeStore(raw, at)
+    }
+    const data = build(raw)
+    catalogCache = { at, ttl, data }
+    return data
+  })().finally(() => {
+    catalogLoading = null
+  })
   return catalogLoading
+}
+
+// После своей брони (delta < 0) или отмены (delta > 0) правим остаток в запомненном каталоге на месте —
+// без повторной загрузки всего каталога.
+export function patchStock(productId, variantId, delta) {
+  const apply = (products) => {
+    const variant = products?.find((p) => p.id === productId)?.variants?.find?.((v) => v.id === variantId)
+    if (variant && Number.isInteger(variant.quantity)) variant.quantity = Math.max(0, variant.quantity + delta)
+    return Boolean(variant)
+  }
+  if (catalogCache) apply(catalogCache.data.products)
+  const saved = readStore()
+  if (saved && apply(saved.raw.products)) writeStore(saved.raw, saved.savedAt)
 }
 
 // Фото из Telegram хранятся как «/api/photo?id=…» — адрес нашего сервера (с учётом BASE).
@@ -253,6 +333,16 @@ export async function fetchProduct(id) {
   const catalog = await loadCatalog()
   const product = catalog.products.find((p) => p.id === id)
   if (!product) return null
+  // Каталог может отставать на несколько минут, а здесь человек выбирает размер и бронирует —
+  // поэтому цену и остатки этого одного товара берём прямо из базы (1 чтение).
+  // База не ответила — показываем как в каталоге (бронь всё равно проверит остаток ещё раз).
+  const live = await readDocument('products', id).catch(() => undefined)
+  if (live === null) return null // товар удалён
+  const fresh = live && live.is_active === true ? safeProduct(live) : null
+  if (fresh) {
+    product.price = fresh.price
+    product.variants = fresh.variants
+  }
   const category = catalog.categories.find((c) => c.id === product.category_id)
   if (!category) return null
   // Тот же товар в других магазинах (общий model_id): где ещё есть и почём. Сначала те, где есть в наличии, и дешёвые.
@@ -278,7 +368,25 @@ export async function fetchCartView(lines) {
   })
 }
 
-// Сбросить запомненный каталог (после изменений в кабинете магазина — сразу видно новое).
+// Сбросить запомненный каталог после изменений продавца или админа (товар, магазин, категория) и сообщить
+// серверу, что его общую копию пора перечитать. Покупательские действия (бронь, отмена) сюда не ходят —
+// для них есть patchStock.
 export function clearCatalogCache() {
   catalogCache = null
+  try {
+    localStorage.removeItem(STORE_KEY)
+  } catch {
+    // память браузера недоступна
+  }
+  const sending = authHeader()
+    .then((authorization) => (authorization ? fetch(asset('/api/catalog'), { method: 'POST', headers: { Authorization: authorization } }) : null))
+    .then(async (response) => {
+      const answer = response?.ok ? await response.json().catch(() => null) : null
+      if (answer?.at) signalAt = answer.at
+    })
+    .catch(() => {})
+    .finally(() => {
+      if (signal === sending) signal = null
+    })
+  signal = sending
 }

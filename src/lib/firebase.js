@@ -62,6 +62,16 @@ export async function readCollection(collection, field, value) {
   return rows.filter((row) => row.document).map((row) => fromDocument(row.document))
 }
 
+// Один документ по номеру. null — такого документа нет.
+export async function readDocument(collection, id) {
+  try {
+    return fromDocument(await request(`/${collection}/${encodeURIComponent(id)}`))
+  } catch (error) {
+    if (error.status === 404) return null
+    throw error
+  }
+}
+
 // --- Перевод из формата Firestore ({ stringValue: … }) в обычные данные (и значение для условия where) ---
 
 function fromDocument(document) {

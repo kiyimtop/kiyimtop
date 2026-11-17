@@ -13,12 +13,14 @@ import {
   deleteProduct,
   fetchMe,
   fetchMyShop,
+  fetchShopBookings,
   saveProduct,
   setBookingStatus,
   setGroupStatus,
   updateShop,
   uploadPhoto,
 } from '../lib/seller.js'
+import { STATS_DAYS, shopStats } from '../lib/shopStats.js'
 
 // Кабинет магазина (/my-shop) — и на сайте, и внутри Telegram (кнопка «Кабинет магазина» в боте).
 //   не вошли → «Как это работает» и вход; нет магазина → заявка; заявка → «ждёт решения администратора»;
@@ -197,6 +199,11 @@ function ShopCabinet({ id, isAdmin, hint, canSwitch, onSwitch, onApply }) {
   if (data === undefined) return <p className="page-message">{t('common.loading')}</p>
   const { shop, products, bookings } = data
   const reload = () => setAttempt((n) => n + 1)
+  // После ответа на бронь обновляем только брони (товары и магазин не менялись — читать их заново незачем).
+  const reloadBookings = () =>
+    fetchShopBookings(id)
+      .then((list) => setData((d) => (d ? { ...d, bookings: list } : d)))
+      .catch(reload)
 
   const header = (
     <header className="cab-head">
@@ -252,7 +259,7 @@ function ShopCabinet({ id, isAdmin, hint, canSwitch, onSwitch, onApply }) {
       {header}
       {hint}
       <div className="chip-row cab-tabs" role="tablist">
-        {['bookings', 'products', 'shop'].map((name) => (
+        {['bookings', 'products', 'stats', 'shop'].map((name) => (
           <button key={name} type="button" role="tab" className="chip" aria-pressed={tab === name} onClick={() => setTab(name)}>
             {t(`seller.tab.${name}`)}
             {name === 'bookings' && activeBookings.length > 0 && <span className="cab-badge">{activeBookings.length}</span>}
@@ -261,7 +268,9 @@ function ShopCabinet({ id, isAdmin, hint, canSwitch, onSwitch, onApply }) {
         ))}
       </div>
 
-      {tab === 'bookings' && <BookingsTab shopId={shop.id} bookings={bookings} onChanged={reload} />}
+      {tab === 'bookings' && <BookingsTab shopId={shop.id} bookings={bookings} onChanged={reloadBookings} />}
+
+      {tab === 'stats' && <StatsTab products={products} bookings={bookings} />}
 
       {tab === 'products' && (
         <>
@@ -311,6 +320,79 @@ const totalQuantity = (product) => (product.variants ?? []).reduce((sum, v) => s
 
 // Брони магазина: одна карточка на бронь (из корзины — несколько вещей, один код).
 // «Подтвердить всё» / «Выдан» — для всей брони; «Нет в наличии» — у каждой позиции отдельно.
+// Аналитика магазина за 30 дней: считается из уже загруженных броней и товаров (lib/shopStats.js).
+function StatsTab({ products, bookings }) {
+  const { t, language, formatPrice } = useI18n()
+  const stats = useMemo(() => shopStats(products, bookings, language), [products, bookings, language])
+  const max = Math.max(1, ...stats.days.map((d) => d.value))
+  const stat = (value, label, attention) => (
+    <div className={`cab-stat ${attention ? 'attention' : ''}`}>
+      <b>{value}</b>
+      <span>{label}</span>
+    </div>
+  )
+  const list = (title, rows) =>
+    rows.length > 0 && (
+      <div className="cab-card">
+        <p className="cab-card-title">
+          <b>{title}</b>
+        </p>
+        <ol className="adm-top">
+          {rows.map((row) => (
+            <li key={row.name}>
+              <span>{row.name}</span>
+              <b>{row.n}</b>
+            </li>
+          ))}
+        </ol>
+      </div>
+    )
+  const names = (title, group) =>
+    group.count > 0 && (
+      <div className="cab-card">
+        <p className="cab-card-title">
+          <b>
+            {title}: {group.count}
+          </b>
+        </p>
+        <p>{group.names.join(', ')}{group.count > group.names.length ? '…' : ''}</p>
+      </div>
+    )
+  return (
+    <>
+      <h2 className="adm-h2">{t('seller.stats.title', { days: STATS_DAYS })}</h2>
+      {stats.total === 0 && <p className="page-message">{t('seller.stats.empty')}</p>}
+      <div className="cab-summary">
+        {stat(stats.total, t('seller.stats.total'))}
+        {stat(stats.pickedUp, t('seller.stats.pickedUp'))}
+        {stat(formatPrice(stats.revenue), t('seller.stats.revenue'))}
+        {stat(stats.pickupRate === null ? '—' : `${stats.pickupRate}%`, t('seller.stats.pickupRate'))}
+        {stat(stats.noShow, t('seller.stats.noShow'), stats.noShow > 0)}
+        {stat(stats.cancelled + stats.unavailable, t('seller.stats.closedOther'))}
+      </div>
+      <div className="cab-card adm-bars-card">
+        <p className="cab-card-title">
+          <b>{t('seller.stats.byDay')}</b>
+        </p>
+        <div className="adm-bars">
+          {stats.days.map((d) => (
+            <div key={d.day} className="adm-bar">
+              <span className="adm-bar-value">{d.value || ''}</span>
+              <span className="adm-bar-fill" style={{ height: `${Math.max(3, (d.value / max) * 100)}%` }} />
+              <span className="adm-bar-label">{d.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+      {list(t('seller.stats.topProducts'), stats.topProducts)}
+      {list(t('seller.stats.topSizes'), stats.topSizes)}
+      {names(t('seller.stats.soldOut'), stats.soldOut)}
+      {names(t('seller.stats.low'), stats.low)}
+      <p className="cab-muted">{t('seller.stats.note')}</p>
+    </>
+  )
+}
+
 function BookingsTab({ shopId, bookings, onChanged }) {
   const { t, language, formatDateTime, formatPrice } = useI18n()
   const [busy, setBusy] = useState(null)

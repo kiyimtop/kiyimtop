@@ -4,7 +4,7 @@ import ShopInfo from '../components/ShopInfo.jsx'
 import AuthForm from '../components/AuthForm.jsx'
 import LineItem from '../components/LineItem.jsx'
 import { useAccount } from '../lib/auth.js'
-import { bookingState, cancelGroup, fetchMyBookings, groupBookings, qtyOf } from '../lib/bookings.js'
+import { NO_SHOW_LIMIT, bookingState, cancelGroup, fetchMyBookings, groupBookings, noShowCount, qtyOf } from '../lib/bookings.js'
 import { useI18n } from '../lib/i18n.jsx'
 import { Link, replaceSearch } from '../lib/router.jsx'
 
@@ -86,6 +86,13 @@ export default function MyBookings() {
           <Link to="/" className="primary-button">
             {t('nav.home')}
           </Link>
+        </div>
+      )}
+
+      {/* Предупреждение о неявках: после трёх за месяц новые брони закрываются. */}
+      {loggedIn && bookings && noShowCount(bookings) > 0 && (
+        <div className="cab-card" role="status">
+          <p>{t(noShowCount(bookings) >= NO_SHOW_LIMIT ? 'booking.noShowBlocked' : 'booking.noShowWarning', { n: noShowCount(bookings), max: NO_SHOW_LIMIT })}</p>
         </div>
       )}
 

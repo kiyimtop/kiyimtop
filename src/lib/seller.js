@@ -67,21 +67,38 @@ export async function fetchMyShop(id) {
     if (!shopSnap.exists()) throw codeError('not_found')
     const shop = { id: shopSnap.id, ...plain(shopSnap.data()) }
     if (!profile?.isStaff && !(shop.owner_uids ?? []).includes(user.uid)) throw codeError('not_found')
-    // Владелец видит брони по своему uid (так разрешают правила), админ — по магазину.
-    const bookingsQuery = profile?.isStaff
-      ? fs.query(fs.collection(db, 'bookings'), fs.where('shop_id', '==', id), fs.limit(1000))
-      : fs.query(fs.collection(db, 'bookings'), fs.where('owner_uids', 'array-contains', user.uid), fs.limit(1000))
-    const [productsSnap, bookingsSnap] = await Promise.all([
+    const [productsSnap, bookings] = await Promise.all([
       fs.getDocs(fs.query(fs.collection(db, 'products'), fs.where('shop_id', '==', id), fs.limit(MAX_PRODUCTS))),
-      fs.getDocs(bookingsQuery),
+      loadShopBookings(db, fs, id, user, profile),
     ])
     const products = productsSnap.docs.map((d) => ({ id: d.id, ...plain(d.data()) }))
-    const bookings = bookingsSnap.docs.map((d) => ({ id: d.id, ...plain(d.data()) })).filter((b) => b.shop_id === id)
     await syncSubscriptions([shop])
-    await releaseExpired(bookings).catch(() => {})
     products.sort((a, b) => String(a.name_ru ?? '').localeCompare(String(b.name_ru ?? '')))
-    bookings.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
-    return { shop: shopOut(shop), products, bookings: bookings.slice(0, 200) }
+    return { shop: shopOut(shop), products, bookings }
+  } catch (error) {
+    throw toCode(error)
+  }
+}
+
+// Брони магазина (последние 200), просроченные заодно отпускаются.
+// Владелец видит брони по своему uid (так разрешают правила), админ — по магазину.
+async function loadShopBookings(db, fs, id, user, profile) {
+  const bookingsQuery = profile?.isStaff
+    ? fs.query(fs.collection(db, 'bookings'), fs.where('shop_id', '==', id), fs.limit(1000))
+    : fs.query(fs.collection(db, 'bookings'), fs.where('owner_uids', 'array-contains', user.uid), fs.limit(1000))
+  const snap = await fs.getDocs(bookingsQuery)
+  const bookings = snap.docs.map((d) => ({ id: d.id, ...plain(d.data()) })).filter((b) => b.shop_id === id)
+  await releaseExpired(bookings).catch(() => {})
+  bookings.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))
+  return bookings.slice(0, 200)
+}
+
+// Только брони — после ответа на бронь («Подтвердить», «Выдан»…) товары и магазин заново читать незачем.
+export async function fetchShopBookings(id) {
+  const { user, profile } = me()
+  const { db, fs } = await fire()
+  try {
+    return await loadShopBookings(db, fs, id, user, profile)
   } catch (error) {
     throw toCode(error)
   }
